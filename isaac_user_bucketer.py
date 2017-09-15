@@ -38,16 +38,16 @@ def process_csv_chunk(df, fout):
 prebucket=True
 if __name__ == '__main__':
     fhandles = {}
-    users = set()
     qmeta = OrderedDict()
     
-    users = open("./users.csv").read().splitlines()
+    #users = open("./users.csv").read().splitlines()
     f=0
     #fout = open("bucketted_by100.csv", "w")
     if(prebucket):
         for df in pd.read_csv('qs.new2.txt', encoding='utf-8',header=0 ,engine = 'c', low_memory=True, chunksize=20000):
             df = df[df['event_type'] == "ANSWER_QUESTION"]
-            us = df['user_id'].unique()
+            df = df[df['level'] != 0 ]
+            us = df['user_id'].unique()#[0:1000]
             
             for u in us:
                 rows = df[df['user_id'] == u]
