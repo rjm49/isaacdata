@@ -111,3 +111,6 @@ ENV/
 .pydevproject
 *.png
 *.gz
+/by_user
+/by_date
+/.idea

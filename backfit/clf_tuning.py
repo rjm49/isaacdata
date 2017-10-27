@@ -6,6 +6,7 @@ Created on 11 Sep 2017
 from sklearn.model_selection import RandomizedSearchCV
 import numpy
 from scipy.stats import randint as sp_randint
+import copy
 
 
 # Utility function to report best scores
@@ -22,9 +23,12 @@ def report(results, n_top=3):
 
 # run randomized search
 def run_random_search(clf, X, y, param_dist):
-    n_iter_search = 20
-    random_search = RandomizedSearchCV(clf, param_distributions=param_dist,
-                                   n_iter=n_iter_search, n_jobs=3, scoring="f1")
+    n_iter_search = param_dist['n_iter']
+    #del param_dist['n_iter']
+    pcopy = copy.copy(param_dist)
+    del pcopy['n_iter']
+    random_search = RandomizedSearchCV(clf, param_distributions=pcopy,
+                                   n_iter=n_iter_search, n_jobs=-1)
 
 #     print("RandomizedSearchCV took %.2f seconds for %d candidates"
 #             " parameter settings." % ((time() - start), n_iter_search))
