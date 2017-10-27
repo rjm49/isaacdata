@@ -4,7 +4,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from backfit.BackfitUtils import init_objects
-from backfit.utils.utils import DW_STRETCH, DW_LEVEL, calc_qdiff, load_new_diffs, DW_NO_WEIGHT
+from backfit.utils.utils import DW_STRETCH, DW_LEVEL, calc_qdiff, load_new_diffs, DW_NO_WEIGHT, DW_BINARY
 from backfit.BackfitTest import train_and_test
 
 print(sys.path)
@@ -78,8 +78,7 @@ def generate_run_files(retain, _featureset_to_use, _w, cats, cat_lookup, all_qid
     stem = _featureset_to_use+"_"+str(retain)+"_"+_w
     x_filename= stem+"_X.csv"
     y_filename= stem+"_y.csv"
-    
-    runs_file = open("runs.csv", "w")
+
     X_file = open(stem+"_X.csv","w")
     y_file = open(stem+"_y.csv","w")
 
@@ -113,11 +112,13 @@ def generate_run_files(retain, _featureset_to_use, _w, cats, cat_lookup, all_qid
             
             catix = cat_ixs[ cat_lookup[qt] ]
 
-            if retain >=0:
-                X[X>0] = X[X>0] * retain
+            X = X * retain
                 
             if (n_pass>0):
-                X[catix] = qdiff / n_atts
+                if _w==DW_BINARY:
+                    X[catix] = 1
+                else:
+                    X[catix] = qdiff / n_atts
                 y = (1 if n_atts>1 else 0)
                 #print("in",catix,"put diff",(qdiff/n_atts))                
                 # if retain < 0:
@@ -135,7 +136,6 @@ def generate_run_files(retain, _featureset_to_use, _w, cats, cat_lookup, all_qid
 #             print("did run")
         X_file.flush()
         y_file.flush()                    
-    runs_file.close()
     X_file.close()
     y_file.close()
     return x_filename,y_filename
@@ -159,9 +159,9 @@ if __name__ == '__main__':
     report_name = "report_DW{}_{}_fb{}_opt{}_scale{}_{}.txt".format(0, n_users, str(1 if force_balanced_classes else 0), ("001" if optimise_predictors else "0"), ("1" if do_scaling else "0"), featureset_to_use)
     if do_test:
         report = open(report_name,"w")
-    for w in [DW_STRETCH]: #, DW_LEVEL, DW_NO_WEIGHT]:
-        #for retein in [0.5, 1 ]: #, SCORE_MODE_ACCUM]
-        for retain in [i / 20.0 for i in range(21)]:
+    for w in [DW_BINARY]: #, DW_LEVEL, DW_NO_WEIGHT]:
+        for retain in [0.0, 0.5, 1.0]: #0.25, 0.5, 0.75, 1.0 ]: #, SCORE_MODE_ACCUM]
+        #for retain in [i / 20.0 for i in range(21)]:
             print(cat_ixs)
             
             if do_test:
@@ -180,7 +180,7 @@ if __name__ == '__main__':
     if do_test:
         retains = []
         f1s = []
-        mx = numpy.ndarray(shape=(len(reports), 3))
+        mx = numpy.ndarray(shape=(len(reports), 4))
         for ix, (retain, r, ytr, ypd) in enumerate(reports):
             mx[ix, 0] = retain
             f1s = f1_score(ytr, ypd, average=None)

@@ -10,7 +10,8 @@ from backfit.clf_tuning import run_random_search
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from sklearn.metrics.classification import classification_report, accuracy_score
+from sklearn.metrics.classification import classification_report, accuracy_score, f1_score, recall_score, \
+    precision_score
 from sklearn.model_selection._split import train_test_split
 from sklearn.preprocessing.data import StandardScaler
 
@@ -82,9 +83,6 @@ def train_and_test(retain, predictors, predictor_params, x_filename, y_filename,
             pickle.dump(p, output, pickle.HIGHEST_PROTOCOL)
     print("done!")
 
-    print("y_train:", y_train[y_train == 1].shape, y_train[y_train != 1].shape )
-    print("y_test:", y_test[y_test == 1].shape, y_test[y_test != 1].shape)
-    
 
     report.write("* ** *** |\| \` | |  |) /; `|` / |_| *** ** *\n")
     report.write("* ** *** | | /_ |^|  |) ||  |  \ | | *** ** *\n")
@@ -102,14 +100,18 @@ def train_and_test(retain, predictors, predictor_params, x_filename, y_filename,
         
         report.write("TEST\n")
         y_pred = p.predict(X_test)
-        report.write(classification_report(y_test, y_pred)+"\n")
+        report.write(classification_report(y_true=y_test, y_pred=y_pred)+"\n")
 
-        for c in set(y_pred): #test accy for each class
-            acc = accuracy_score(y_test[y_test==c], y_pred[y_test==c])
-            report.write("{} : {}\n".format(c,acc))
+        report.write( str(precision_score(y_test, y_pred, average=None))+"\n")
+        report.write( str(recall_score(y_test, y_pred, average=None))+"\n")
+        report.write( str(f1_score(y_test, y_pred, average=None))+"\n")
+
+        # for c in set(y_pred): #test accy for each class
+        #     acc = accuracy_score(y_test[y_test==c], y_pred[y_test==c])
+        #     report.write("{} : {}\n".format(c,acc))
 
         overall = accuracy_score(y_test, y_pred)
-        report.write("{}\n".format(overall))
+        report.write("Acc {}\n".format(overall))
 
         report.write("------END OF CLASSIFIER------\n")
         report.flush()
