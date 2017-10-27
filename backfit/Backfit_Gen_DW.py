@@ -1,8 +1,12 @@
 import os, sys
-from BackfitUtils import init_objects
-from BackfitTest import train_and_test
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from backfit.BackfitUtils import init_objects
+from backfit.utils.utils import DW_STRETCH, DW_LEVEL, calc_qdiff, load_new_diffs, DW_NO_WEIGHT
+from backfit.BackfitTest import train_and_test
+
 print(sys.path)
 from sklearn.metrics.classification import f1_score
 from sklearn.neural_network.multilayer_perceptron import MLPClassifier
@@ -15,9 +19,7 @@ from sklearn.dummy import DummyClassifier
 import pandas as pd
 import numpy
 import copy
-from utils.utils import ATT_QID, ATT_COR, extract_runs_w_timestamp, balanced_subsample,\
-    calc_qdiff, DW_LEVEL, DW_NO_WEIGHT, SCORE_MODE_REPLACE, DW_STRETCH,\
-    load_new_diffs, SCORE_MODE_DECAY
+from utils.utils import ATT_QID, ATT_COR, extract_runs_w_timestamp, balanced_subsample
 
 from matplotlib import pyplot as plt
 #DEFINE SOME CONSTANTS
@@ -138,6 +140,7 @@ def generate_run_files(retain, _featureset_to_use, _w, cats, cat_lookup, all_qid
     y_file.close()
     return x_filename,y_filename
 
+
 if __name__ == '__main__':
     cmd = sys.argv[1]
     if cmd == 'generate':
@@ -156,18 +159,31 @@ if __name__ == '__main__':
     report_name = "report_DW{}_{}_fb{}_opt{}_scale{}_{}.txt".format(0, n_users, str(1 if force_balanced_classes else 0), ("001" if optimise_predictors else "0"), ("1" if do_scaling else "0"), featureset_to_use)
     if do_test:
         report = open(report_name,"w")
-    for w in [DW_STRETCH, DW_LEVEL, DW_NO_WEIGHT]:
-        for retein in [0.5, 1 ]: #, SCORE_MODE_ACCUM]
+    for w in [DW_STRETCH]: #, DW_LEVEL, DW_NO_WEIGHT]:
+        #for retein in [0.5, 1 ]: #, SCORE_MODE_ACCUM]
+        for retain in [i / 20.0 for i in range(21)]:
             print(cat_ixs)
             
             if do_test:
-                xfn = "F33_{}_{}_X.csv".format(str(retein),w)
-                yfn = "F33_{}_{}_y.csv".format(str(retein),w)
-                X_train, X_test, y_pred_tr, y_pred, y_true, scaler = train_and_test(retein, predictors, predictor_params, xfn, yfn, n_users, percTest, featureset_to_use, w, force_balanced_classes, do_scaling, optimise_predictors, report=report)
+                xfn = "F33_{}_{}_X.csv".format(str(retain),w)
+                yfn = "F33_{}_{}_y.csv".format(str(retain),w)
+                X_train, X_test, y_pred_tr, y_pred, y_true, scaler = train_and_test(retain, predictors, predictor_params, xfn, yfn, n_users, percTest, featureset_to_use, w, force_balanced_classes, do_scaling, optimise_predictors, report=report)
+                reports.append((retain, report_name, y_true, y_pred))
             else:
-                xfn, yfn = generate_run_files(retein, featureset_to_use, w, cats, cat_lookup, all_qids, users, stretches, passdiffs, passquals, levels, cat_ixs)
+                xfn, yfn = generate_run_files(retain, featureset_to_use, w, cats, cat_lookup, all_qids, users, stretches, passdiffs, passquals, levels, cat_ixs)
             #reports.append((0, report_name, y_true, y_pred))
     if do_test:
         report.close()
 
     print("complete, report file is:", report_name) 
+
+    if do_test:
+        retains = []
+        f1s = []
+        mx = numpy.ndarray(shape=(len(reports), 3))
+        for ix, (retain, r, ytr, ypd) in enumerate(reports):
+            mx[ix, 0] = retain
+            f1s = f1_score(ytr, ypd, average=None)
+            mx[ix, 1:4] = f1s
+
+        numpy.savetxt("retains_to_plot.csv", mx)
