@@ -10,13 +10,13 @@ from numpy import isnan
 from collections import OrderedDict
 import random
 
-def init_objects(n_users):
+def init_objects(n_users, seed=None):
     qmeta = pd.read_csv("../qmeta.csv", header=None)
     #print(qmeta)
     users = open("../users.csv").read().splitlines()
-    #users = [u for u in users if u.isnumeric()]
+    users = [u for u in users if u.isnumeric()]
     
-    random.seed(666)
+    random.seed(seed)
     shuffle(users)
     if n_users>0:
         users = users[0: n_users]
@@ -47,7 +47,7 @@ def init_objects(n_users):
         diffs[q_id] = -1 if (diff_raw == float("inf")) else diff_raw
 
         lv = numpy.float(r[LEV])
-        levels[q_id]= 0 if isnan(lv) else lv
+        levels[q_id]= 0 if isnan(lv) else (1+lv)
 
         
 

@@ -16,6 +16,9 @@ DW_STRETCH = "STRETCH"
 DW_LEVEL = "LEVEL"
 DW_NO_WEIGHT = "NO_WGT"
 DW_BINARY = "BINARY"
+DW_NATTS = "N_ATTS"
+DW_PASSRATE = "PASSRATE"
+DW_MCMC = "MCMC"
 
 ATT_TIM=0
 ATT_COR=1
@@ -159,18 +162,33 @@ def load_new_diffs():
     all_qids = passdiffs.keys()
     return passdiffs, stretches, passquals, all_qids
 
+def load_mcmc_diffs():
+    diff_df = pd.read_csv("../mcmc/mcmc_results.csv", header=None)
+    mcmcdiffs = {}
+    for dr in diff_df.iterrows():
+        data = dr[1]
+        qt = data[0].replace("|", "~")
+        mcmcdiffs[qt] = data[1]
+    return mcmcdiffs
 
-def calc_qdiff(qt, stretches, levels, mode=None):
-    if(mode == DW_STRETCH):
+def calc_qdiff(qt, passrates, stretches, levels, mcmcdiffs, mode=None):
+    if(mode == DW_STRETCH or mode==DW_NATTS):
         return stretches[qt]
     elif(mode == DW_LEVEL):
-        assert not min(levels.values())<0
-        assert not max(levels.values())>7
-        return 1.0 + levels[qt] #plus-one to convert [0..6] to [1..7]
+#         assert not min(levels.values())<0
+#         assert not max(levels.values())>7
+        return levels[qt] #plus-one to convert [0..6] to [1..7]
     elif(mode == DW_NO_WEIGHT):
         return 1.0
     elif(mode == DW_BINARY):
         return 1.0
+    elif(mode == DW_PASSRATE):
+        return passrates[qt]
+    elif(mode == DW_MCMC):
+        if qt not in mcmcdiffs:
+            return 0
+        else:
+            return mcmcdiffs[qt]
     return None
 
 if __name__=="__main__":

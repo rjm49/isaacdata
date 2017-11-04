@@ -20,24 +20,25 @@ from utils.utils import balanced_subsample
 
 def train_and_test(retain, predictors, predictor_params, x_filename, y_filename, n_users, percTest, featureset_to_use, diff_weighting, force_balanced_classes, do_scaling, optimise_predictors, report):
     
-    all_X = numpy.genfromtxt(x_filename, delimiter=",")
+    all_X = numpy.genfromtxt(x_filename, delimiter=",", max_rows=100000)
 #     yf = open("all_y.csv", 'r').readlines()
 #     all_y = numpy.asarray([numpy.array(s.split(",")).astype('float64') for s in yf], dtype=numpy.float64)
-    all_y = numpy.genfromtxt(y_filename, delimiter=",")
+    all_y = numpy.genfromtxt(y_filename, delimiter=",", max_rows=100000)
 
+    print("loaded X and y files")
     
     for i in range(all_X.shape[0]):
         rowsum = numpy.sum(all_X[i,])
 #         print("X {} {}".format(i, rowsum))
         if numpy.isnan(rowsum):
-            print(x_filename)
+            print("nan in", x_filename)
             exit()
-        
+
     for i in range(all_y.shape[0]):
         rowsum = numpy.sum(all_y[i,])
 #         print("y {} {}".format(i, rowsum))
         if numpy.isnan(rowsum):
-            print(y_filename)
+            print("nan in", y_filename)
             exit()
 
     #print("selecting balanced subsample")

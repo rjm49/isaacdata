@@ -9,9 +9,12 @@ import numpy
 def draw_ret_vs_f1():
     mx = numpy.genfromtxt("retains_to_plot.csv")    
 #     plt.plot(mx[:,0],mx[:,1], label="OUT")
-    plt.plot(mx[:,0],mx[:,1], label="TOO EASY")
-    plt.plot(mx[:, 0], mx[:, 2], label="IN ZPD")
-    plt.plot(mx[:, 0], mx[:, 3], label="TOO HARD")
+
+    cs = mx.shape[1]
+    labs = ["IN","OUT"] if cs==3 else ["EASY","IN","HARD"]
+    for c in range(mx.shape[1]-1):
+        plt.plot(mx[:,0],mx[:,c+1], label=labs[c])
+
     plt.xlabel("Stepwise History Retention")
     plt.ylabel("F-score")
     plt.legend()
