@@ -15,15 +15,9 @@ from sklearn.svm.classes import SVC, LinearSVC
 from sklearn.linear_model.logistic import LogisticRegression
 from sklearn.dummy import DummyClassifier
 
-
-
 import pandas as pd
 import numpy
-import copy
-from utils.utils import ATT_QID, ATT_COR, extract_runs_w_timestamp, balanced_subsample
-
-from matplotlib import pyplot as plt
-#DEFINE SOME CONSTANTS
+from utils.utils import extract_runs_w_timestamp
 
 QENC_QUAL=False
 QENC_DIFF=False
@@ -51,7 +45,7 @@ predictors = [
 ]
 
 predictor_params = [
-                    # None,
+                    None,
                     # None,
 #                             {'alpha': numpy.logspace(-3, 2) },
 #                     {'n_iter':50,'C': numpy.logspace(-3, 2), 'gamma': numpy.logspace(-3, 2)},
@@ -59,7 +53,7 @@ predictor_params = [
 #                      {'n_iter':50,'C': numpy.logspace(-3, 2)},
 #                             None,
 #                     {'n_iter':200,'activation':['relu'], 'hidden_layer_sizes':[(100,),(100,50),(50,),(20,),(10,)], 'learning_rate_init':[0.001, 0.01, 0.1], 'alpha': numpy.logspace(-6,-1) },
-                    {'n_iter':200,'hidden_layer_sizes':[(100,), (66,10)], 'learning_rate_init':[0.001, 0.01, 0.1], 'alpha': numpy.logspace(-6,2) },
+#                     {'n_iter':200,'hidden_layer_sizes':[(100,), (66,10)], 'learning_rate_init':[0.001, 0.01, 0.1], 'alpha': numpy.logspace(-6,2) },
                       # None,
 #                         None,
 #                         {'n_iter':50,'C': numpy.logspace(-3, 2)},
@@ -129,34 +123,40 @@ def generate_run_files(retain, _featureset_to_use, _w, cats, cat_lookup, all_qid
             passrate = passrates[qt]
             qpassqual = passquals[qt]
             stretch = stretches[qt]
-            # mcmc = mcmcdiffs[qt] if qt in mcmcdiffs else 0
-            mcmc = 0
-            if(n_pass > 0):
-                tailix = qindex.index(qt)
-                headix = qindex.index(qt)
-                mcmc = tmx[headix, tailix]
-                print ("mcmc = ",mcmc)
+            mcmc = mcmcdiffs[qt] if qt in mcmcdiffs else 0
+            # mcmc = 0
+            # if(n_pass > 0):
+            #     tailix = qindex.index(qt)
+            #     headix = qindex.index(qt)
+            #     mcmc = tmx[headix, tailix]
+            #     print ("mcmc = ",mcmc)
             #print(qindex)
 
-            X = X * retain
+            # X = X * retain
             qenc = get_qenc(catix, passrate, stretch, lev, mcmc, mode=_w)
             X_file.write(",".join([str(x) for x in X])+","+",".join([str(e) for e in qenc])+"\n")
 
             if (n_pass>0):
-            #     X[catix] = (retain*X[catix]) + ((1-retain)*qdiff)
-            # else:
-            #     X[catix] = -1 *(  (retain*X[catix]) + ((1-retain)*qdiff) )
+                X[catix] = (retain*X[catix]) + ((1-retain)*qdiff)
+            else:
+                X[catix] = -1 *(  (retain*X[catix]) + ((1-retain)*qdiff) )
 
                 if _w==DW_BINARY:
-                    X[catix] = 1
-                # elif _w==DW_NATTS:
-                #     X[catix] = n_atts
-                # elif _w==DW_PASSRATE:
-                #     X[catix] = passrate / n_atts
+                    X[catix] = 1.0
+                elif _w==DW_NATTS:
+                    X[catix] = n_atts
+                elif _w == DW_NO_WEIGHT:
+                    X[catix] = 1.0 / n_atts
+                elif _w==DW_PASSRATE:
+                    X[catix] = passrate / n_atts
+                elif _w==DW_STRETCH:
+                    X[catix] = stretch / n_atts
                 elif _w==DW_MCMC:
-                    X[catix] = mcmc
-                # else:
-                #     X[catix] = qdiff
+                    X[catix] = mcmc / n_atts
+                elif _w==DW_LEVEL:
+                    X[catix] = lev / n_atts
+                else:
+                    X[catix] = qdiff
                 y = (-1 if n_atts==1 else 0)
                 #print("in",catix,"put diff",(qdiff/n_atts))
                 # if retain < 0:
@@ -203,7 +203,7 @@ if __name__ == '__main__':
     report_name = "report_DW{}_{}_fb{}_opt{}_scale{}_{}.txt".format(0, n_users, str(1 if force_balanced_classes else 0), ("001" if optimise_predictors else "0"), ("1" if do_scaling else "0"), featureset_to_use)
     if do_test:
         report = open(report_name,"w")
-    for w in [DW_MCMC]: #, DW_LEVEL, DW_NO_WEIGHT]:
+    for w in [DW_BINARY, DW_NO_WEIGHT, DW_NATTS, DW_LEVEL, DW_PASSRATE, DW_MCMC, DW_STRETCH]:
         #for retain in [0.0, 0.5, 1.0]: #0.25, 0.5, 0.75, 1.0 ]: #, SCORE_MODE_ACCUM]
         #for retain in [i / 20.0 for i in range(21)]:
         for retain in [i / 10.0 for i in range(11)]:
