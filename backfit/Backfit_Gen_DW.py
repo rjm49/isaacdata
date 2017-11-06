@@ -31,7 +31,7 @@ qenc_width = 33
 
 FEAT_F33 = "F33"
 
-n_users = 500
+n_users = 1000
 max_runs = None #10000
 percTest = 0.1
 
@@ -94,8 +94,14 @@ def generate_run_files(retain, _featureset_to_use, _w, cats, cat_lookup, all_qid
 
     print("using n_features=", n_features)
 
-    # tmx = numpy.genfromtxt("../mcmc/transition.csv") # load the prob transition mx
-    # qindex = open("../mcmc/obsqs.txt").readlines()
+    tmx = numpy.loadtxt("../mcmc/X.csv", delimiter=",") # load the prob transition mx
+    qf = open("../mcmc/obsqs.txt")
+    qindex = [rec.split(",")[0] for rec in qf.read().splitlines()]
+    qf.close()
+
+    print(tmx.shape[0], len(qindex))
+    assert tmx.shape[0] == len(qindex)
+    print("loaded transition data")
 
     run_ct= 0
     X = numpy.zeros(shape=n_features) #init'se a new feature vector w same width as all_X
@@ -106,7 +112,6 @@ def generate_run_files(retain, _featureset_to_use, _w, cats, cat_lookup, all_qid
         attempts = pd.read_csv("../by_user/{}.txt".format(u), header=None)
 
         runs = extract_runs_w_timestamp(attempts)
-        
         for run in runs:
             run_ct+=1
             ts, q, n_atts, n_pass = run
@@ -124,25 +129,32 @@ def generate_run_files(retain, _featureset_to_use, _w, cats, cat_lookup, all_qid
             passrate = passrates[qt]
             qpassqual = passquals[qt]
             stretch = stretches[qt]
-            mcmc = mcmcdiffs[qt] if qt in mcmcdiffs else 0
+            # mcmc = mcmcdiffs[qt] if qt in mcmcdiffs else 0
+            mcmc = 0
+            if(n_pass > 0):
+                tailix = qindex.index(qt)
+                headix = qindex.index(qt)
+                mcmc = tmx[headix, tailix]
+                print ("mcmc = ",mcmc)
+            #print(qindex)
 
-            # X = X * retain
+            X = X * retain
             qenc = get_qenc(catix, passrate, stretch, lev, mcmc, mode=_w)
             X_file.write(",".join([str(x) for x in X])+","+",".join([str(e) for e in qenc])+"\n")
 
             if (n_pass>0):
-                X[catix] = (retain*X[catix]) + ((1-retain)*qdiff)
-            else:
-                X[catix] = -1 *(  (retain*X[catix]) + ((1-retain)*qdiff) )
+            #     X[catix] = (retain*X[catix]) + ((1-retain)*qdiff)
+            # else:
+            #     X[catix] = -1 *(  (retain*X[catix]) + ((1-retain)*qdiff) )
 
-                # if _w==DW_BINARY:
-                #     X[catix] = 1
+                if _w==DW_BINARY:
+                    X[catix] = 1
                 # elif _w==DW_NATTS:
                 #     X[catix] = n_atts
                 # elif _w==DW_PASSRATE:
                 #     X[catix] = passrate / n_atts
-                # elif _w==DW_MCMC:
-                #     X[catix] = mcmc
+                elif _w==DW_MCMC:
+                    X[catix] = mcmc
                 # else:
                 #     X[catix] = qdiff
                 y = (-1 if n_atts==1 else 0)
@@ -182,6 +194,8 @@ if __name__ == '__main__':
     print("n_users",n_users)
     cats, cat_lookup, all_qids, users, _stretches_, levels, cat_ixs = init_objects(n_users, seed=666)
 
+    users = open("../mcmc/mcmc_uesrs.txt").read().splitlines()
+
     passdiffs, stretches, passquals, all_qids = load_new_diffs()
     mcmcdiffs = load_mcmc_diffs()
 
@@ -189,7 +203,7 @@ if __name__ == '__main__':
     report_name = "report_DW{}_{}_fb{}_opt{}_scale{}_{}.txt".format(0, n_users, str(1 if force_balanced_classes else 0), ("001" if optimise_predictors else "0"), ("1" if do_scaling else "0"), featureset_to_use)
     if do_test:
         report = open(report_name,"w")
-    for w in [DW_BINARY]: #, DW_LEVEL, DW_NO_WEIGHT]:
+    for w in [DW_MCMC]: #, DW_LEVEL, DW_NO_WEIGHT]:
         #for retain in [0.0, 0.5, 1.0]: #0.25, 0.5, 0.75, 1.0 ]: #, SCORE_MODE_ACCUM]
         #for retain in [i / 20.0 for i in range(21)]:
         for retain in [i / 10.0 for i in range(11)]:

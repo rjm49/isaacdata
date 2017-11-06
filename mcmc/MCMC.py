@@ -1,32 +1,39 @@
 from collections import Counter
 
 import numpy
-import random
 import pandas as pd
-import string
-from FileLoader import FileLoader
 from backfit.BackfitUtils import init_objects
 from backfit.utils.utils import load_new_diffs, load_mcmc_diffs
 from utils.utils import extract_runs_w_timestamp
 
 if __name__ == '__main__':
-    n_users = -1
-    n_steps = 100000000
-    cats, cat_lookup, all_qids, users, _stretches_, levels, cat_ixs = init_objects(n_users)
+    n_users = 1000
+    n_steps = 100000
+    cats, cat_lookup, all_qids, users, _stretches_, levels, cat_ixs = init_objects(n_users, seed=666)
     passdiffs, stretches, passquals, all_qids = load_new_diffs()
     n_users = len(users)
 
+
     observed_qids = []
+
+    usersf = open("mcmc_uesrs.txt","w")
+
     for u in users:
-        # print("user = ", u)
+        print("user = ", u)
+        usersf.write(u+"\n")
         attempts = pd.read_csv("../by_user/{}.txt".format(u), header=None)
         runs = extract_runs_w_timestamp(attempts)
         for run in runs:
             ts, q, n_atts, n_pass = run
+            q = q.replace("|","~")
             if n_pass>0 and  q not in observed_qids:
                 observed_qids.append(q)
 
+    usersf.close()
     òbserved_qids = ["ROOT"] + observed_qids
+    with open("obsqs.txt","w") as qf:
+        qf.write("\n".join(observed_qids))
+
     n_qids = len(observed_qids)
     X = numpy.zeros(shape=(n_qids, n_qids))  # init'se a new feature vector w same width as all_X
 
@@ -37,10 +44,13 @@ if __name__ == '__main__':
         runs = extract_runs_w_timestamp(attempts)
         for run in runs:
             ts, q, n_atts, n_pass = run
+            q = q.replace("|","~")
             if n_pass>0:
                 qix = observed_qids.index(q)
                 X[curr_qix, qix] = X[curr_qix, qix]+1
                 curr_qix = qix
+
+
 
     #Numpy divide each row in X by its sum to normalise to probabilties
     # print(X.shape)
