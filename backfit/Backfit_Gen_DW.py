@@ -88,14 +88,14 @@ def generate_run_files(retain, _featureset_to_use, _w, cats, cat_lookup, all_qid
 
     print("using n_features=", n_features)
 
-    tmx = numpy.loadtxt("../mcmc/X.csv", delimiter=",") # load the prob transition mx
-    qf = open("../mcmc/obsqs.txt")
-    qindex = [rec.split(",")[0] for rec in qf.read().splitlines()]
-    qf.close()
-
-    print(tmx.shape[0], len(qindex))
-    assert tmx.shape[0] == len(qindex)
-    print("loaded transition data")
+    # tmx = numpy.loadtxt("../mcmc/X.csv", delimiter=",") # load the prob transition mx
+    # qf = open("../mcmc/obsqs.txt")
+    # qindex = [rec.split(",")[0] for rec in qf.read().splitlines()]
+    # qf.close()
+    #
+    # print(tmx.shape[0], len(qindex))
+    # assert tmx.shape[0] == len(qindex)
+    # print("loaded transition data")
 
     run_ct= 0
     X = numpy.zeros(shape=n_features) #init'se a new feature vector w same width as all_X
