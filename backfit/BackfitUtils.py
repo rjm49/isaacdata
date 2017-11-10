@@ -9,18 +9,22 @@ import numpy
 from numpy import isnan
 from collections import OrderedDict
 import random
+import os
 
 def init_objects(n_users, seed=None):
-    qmeta = pd.read_csv("../qmeta.csv", header=None)
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    # print(dir_path)
+    qmeta = pd.read_csv(dir_path+"/../qmeta.csv", header=None)
     #print(qmeta)
-    users = open("../users.csv").read().splitlines()
+    users = open(dir_path+"/../users.csv").read().splitlines()
     users = [u for u in users if u.isnumeric()]
     
     random.seed(seed)
     shuffle(users)
     if n_users>0:
         users = users[0: n_users]
-    
+    print("BackfitUtils, no users =", len(users))
+
     cats= []
     diffs = OrderedDict()
 

@@ -22,17 +22,31 @@ passdiffs, stretches, passquals, all_qids = load_new_diffs()
 # combined.close()
 # exit()
 
-df = pandas.DataFrame.from_csv("combined_df.csv", header=None)
+df = pandas.DataFrame.from_csv("combined_df.csv", header=None, index_col=None)
 df = df[df[1]>0]
 
 invals = numpy.max(df[2]) - df[2]
 #invals = numpy.clip(-numpy.log(vals), a_min=0, a_max=1000000) #-vals
+
+mode_df = pandas.DataFrame.from_csv("../atypes.csv", header=None, index_col=None)
 
 mns = numpy.array([])
 mnprs = numpy.array([])
 mnstrs = numpy.array([])
 stds = numpy.array([])
 qls = numpy.array([])
+
+for filter in ["ALL", "choice", "quantity", "symbol"]:
+    if filter!="ALL":
+            non_mcs = mode_df[mode_df[7]!="choice"][0]
+print(non_mcs.shape[0],"non mc qs")
+
+
+
+print(non_mcs)
+
+df = df[df[0].isin(non_mcs)]
+print(df.shape[0])
 
 levels = numpy.unique(df[1])
 allinvals = df[2] # numpy.max(df[2]) - df[2]
@@ -61,34 +75,35 @@ plt.errorbar(levels, list(mns), list(stds), linestyle="None", marker="^", fmt="n
 def func(x, aa, a, b, c):
     return aa*(x**3) + a*(x*x) + b*x + c
 popt, pcov = curve_fit(func, df[1], allinvals)
-plt.plot(levels, func(levels, *popt))
+plt.plot(levels, func(levels, *popt), label="mcmc")
 plt.scatter(levels, mns, s=5.0, c="#000000", zorder=6)
 
 plt.scatter(levels, maxv*mnprs/numpy.max(df[3]), s=5.0, c="#00cc00", zorder=5)
 popt, pcov = curve_fit(func, df[1], maxv*df[3]/numpy.max(df[3]))
-plt.plot(levels, func(levels, *popt))
+plt.plot(levels, func(levels, *popt), label="passrate")
 
 plt.scatter(levels, maxv*mnstrs/numpy.max(df[4]), s=5.0, c="#0000cc", zorder=4)
 popt, pcov = curve_fit(func, df[1], maxv*df[4]/numpy.max(df[4]))
-plt.plot(levels, func(levels, *popt))
+plt.plot(levels, func(levels, *popt), label="stretch")
 
 plt.scatter(df[1], maxv*df[5]/numpy.max(df[5]), s=0.1, c="#ee00ee", alpha=0.3)
 plt.scatter(levels, maxv*qls/numpy.max(df[5]), s=5.0, c="#cc00cc", zorder=4)
 popt, pcov = curve_fit(func, df[1], maxv*df[5]/numpy.max(df[5]))
-plt.plot(levels, func(levels, *popt))
+plt.plot(levels, func(levels, *popt), label="wilson")
 
 
 #print(corr)
+plt.legend()
 plt.show()
 exit()
 
 ax = plt.gca()
-plt.xticks(ix, xtix, rotation='vertical')
-plt.plot(ix, sorted(vals), label="mcmc prob")
-plt.scatter(ix, slvls, s=0.8, c="#ff880088", label="levels")
-plt.scatter(ix, sstrxs, s=0.4, c="#55880055", label="n_atts")
-plt.scatter(ix, sprxs, s=0.4, c="#88555588", label="passrate")
-plt.scatter(ix, spqxs, s=0.4, c="#55888888", label="wilson")
+# plt.xticks(ix, xtix, rotation='vertical')
+# plt.plot(ix, sorted(vals), label="mcmc prob")
+# plt.scatter(ix, slvls, s=0.8, c="#ff880088", label="levels")
+# plt.scatter(ix, sstrxs, s=0.4, c="#55880055", label="n_atts")
+# plt.scatter(ix, sprxs, s=0.4, c="#88555588", label="passrate")
+# plt.scatter(ix, spqxs, s=0.4, c="#55888888", label="wilson")
 
 plt.xlabel("Qn Index")
 plt.ylabel("MCMC Stationary Prob")

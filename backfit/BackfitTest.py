@@ -18,7 +18,7 @@ from sklearn.preprocessing.data import StandardScaler
 from utils.utils import balanced_subsample
 
 
-def train_and_test(retain, predictors, predictor_params, x_filename, y_filename, n_users, percTest, featureset_to_use, diff_weighting, force_balanced_classes, do_scaling, optimise_predictors, report):
+def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, n_users, percTest, featureset_to_use, diff_weighting, fade, force_balanced_classes, do_scaling, optimise_predictors, report):
     
     all_X = numpy.genfromtxt(x_filename, delimiter=",", max_rows=100000)
 #     yf = open("all_y.csv", 'r').readlines()
@@ -93,7 +93,7 @@ def train_and_test(retain, predictors, predictor_params, x_filename, y_filename,
 #     pca.fit(X_train)
 
     for p in predictors:
-        report.write("------Forced balance="+str(force_balanced_classes)+", F33, WGT="+diff_weighting+", RETAIN="+str(retain)+" SCALE="+str(do_scaling)+"\n")
+        report.write("------Forced balance=" + str(force_balanced_classes) +", F33, WGT=" + diff_weighting +", LEARN=" + str(alpha) + " FADE=" + str(fade) + " SCALE=" + str(do_scaling) + "\n")
         report.write(str(p)+"\n")
 #         report.write("TRAIN\n")
         y_pred_tr = p.predict(X_train)
