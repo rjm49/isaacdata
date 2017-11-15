@@ -22,21 +22,36 @@ passdiffs, stretches, passquals, all_qids = load_new_diffs()
 # combined.close()
 # exit()
 
+
 STRETCH_IX = 4
 PASSRATE_IX = 3
 WILSON_IX = 5
 
-df = pandas.DataFrame.from_csv("combined_df.csv", header=None)
-df = df[df[1]>0]
+
+df = pandas.DataFrame.from_csv("combined_df.csv", header=None, index_col=None)
 
 invals = numpy.max(df[2]) - df[2]
 #invals = numpy.clip(-numpy.log(vals), a_min=0, a_max=1000000) #-vals
+
+mode_df = pandas.DataFrame.from_csv("../atypes.csv", header=None, index_col=None)
 
 mns = numpy.array([])
 mnprs = numpy.array([])
 mnstrs = numpy.array([])
 stds = numpy.array([])
 qls = numpy.array([])
+
+for filter in ["ALL", "choice", "quantity", "symbol"]:
+    if filter!="ALL":
+            non_mcs = mode_df[mode_df[7]!="choice"][0]
+print(non_mcs.shape[0],"non mc qs")
+
+
+
+print(non_mcs)
+
+df = df[df[0].isin(non_mcs)]
+print(df.shape[0])
 
 levels = numpy.unique(df[1])
 allinvals = df[2] # numpy.max(df[2]) - df[2]
@@ -89,18 +104,18 @@ popt, pcov = curve_fit(func, q_levels, maxv*stretches/numpy.max(stretches))
 popt, pcov = curve_fit(func, q_levels, maxv*wilsons/numpy.max(wilsons))
 #plt.plot(levels, func(levels, *popt))
 
-
 #print(corr)
+plt.legend()
 plt.show()
 exit()
 
 ax = plt.gca()
-plt.xticks(ix, xtix, rotation='vertical')
-plt.plot(ix, sorted(vals), label="mcmc prob")
-plt.scatter(ix, slvls, s=0.8, c="#ff880088", label="levels")
-plt.scatter(ix, sstrxs, s=0.4, c="#55880055", label="n_atts")
-plt.scatter(ix, sprxs, s=0.4, c="#88555588", label="passrate")
-plt.scatter(ix, spqxs, s=0.4, c="#55888888", label="wilson")
+# plt.xticks(ix, xtix, rotation='vertical')
+# plt.plot(ix, sorted(vals), label="mcmc prob")
+# plt.scatter(ix, slvls, s=0.8, c="#ff880088", label="levels")
+# plt.scatter(ix, sstrxs, s=0.4, c="#55880055", label="n_atts")
+# plt.scatter(ix, sprxs, s=0.4, c="#88555588", label="passrate")
+# plt.scatter(ix, spqxs, s=0.4, c="#55888888", label="wilson")
 
 plt.xlabel("Qn Index")
 plt.ylabel("MCMC Stationary Prob")
