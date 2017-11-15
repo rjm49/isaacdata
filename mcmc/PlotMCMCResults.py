@@ -22,6 +22,10 @@ passdiffs, stretches, passquals, all_qids = load_new_diffs()
 # combined.close()
 # exit()
 
+STRETCH_IX = 4
+PASSRATE_IX = 3
+WILSON_IX = 5
+
 df = pandas.DataFrame.from_csv("combined_df.csv", header=None)
 df = df[df[1]>0]
 
@@ -41,7 +45,7 @@ for L in levels:
     #invals = numpy.max(df[2]) - rows[2]
     invals = rows[2]
     m = numpy.mean(invals)
-    mstr = numpy.mean(rows[4])
+    mstr = numpy.mean(rows[STRETCH_IX])
     mpr = numpy.mean(rows[3])
     mpq = numpy.mean(rows[5])
     std = numpy.std(invals)
@@ -52,30 +56,38 @@ for L in levels:
     stds = numpy.append(stds, std)
     qls = numpy.append(qls, mpq)
 
-maxv = numpy.max(df[2])
-plt.scatter(df[1], maxv*allinvals/numpy.max(df[2]), s=0.1, c="#ff8800", alpha=0.3)
-plt.scatter(df[1], maxv*df[4]/numpy.max(df[4]), s=0.1, c="#6666cc", alpha=0.3)
-plt.scatter(df[1], maxv*df[3]/numpy.max(df[3]), s=0.1, c="#66cc66", alpha=0.3)
-plt.errorbar(levels, list(mns), list(stds), linestyle="None", marker="^", fmt="none", capsize=2)
+q_levels = df[1]
+mcmcs = df[2]
+stretches = df[STRETCH_IX]
+passrates = df[PASSRATE_IX]
+wilsons = df[WILSON_IX]
+
+maxv = numpy.max(mcmcs)
+#plt.scatter(q_levels, maxv*allinvals/numpy.max(mcmcs), s=0.1, c="#ff8800", alpha=0.3)
+#plt.scatter(q_levels, maxv*stretches/numpy.max(stretches), s=0.1, c="#6666cc", alpha=0.3)
+#plt.scatter(q_levels, maxv*passrates/numpy.max(passrates), s=0.1, c="#66cc66", alpha=0.3)
+plt.errorbar(levels, list(mns), list(stds), linestyle="None", c="#ff8800", fmt="none", capsize=2)
 # plt.plot(lvlt, spl(lvlt), c="#ff8800")
+
 def func(x, aa, a, b, c):
     return aa*(x**3) + a*(x*x) + b*x + c
-popt, pcov = curve_fit(func, df[1], allinvals)
-plt.plot(levels, func(levels, *popt))
-plt.scatter(levels, mns, s=5.0, c="#000000", zorder=6)
 
-plt.scatter(levels, maxv*mnprs/numpy.max(df[3]), s=5.0, c="#00cc00", zorder=5)
-popt, pcov = curve_fit(func, df[1], maxv*df[3]/numpy.max(df[3]))
-plt.plot(levels, func(levels, *popt))
+popt, pcov = curve_fit(func, q_levels, allinvals)
+plt.plot(levels, func(levels, *popt), c="#ff8800")
+#plt.scatter(levels, mns, s=5.0, c="#000000", zorder=6)
 
-plt.scatter(levels, maxv*mnstrs/numpy.max(df[4]), s=5.0, c="#0000cc", zorder=4)
-popt, pcov = curve_fit(func, df[1], maxv*df[4]/numpy.max(df[4]))
-plt.plot(levels, func(levels, *popt))
+#plt.scatter(levels, maxv*mnprs/numpy.max(passrates), s=5.0, c="#00cc00", zorder=5)
+popt, pcov = curve_fit(func, q_levels, maxv*passrates/numpy.max(passrates))
+#plt.plot(levels, func(levels, *popt))
 
-plt.scatter(df[1], maxv*df[5]/numpy.max(df[5]), s=0.1, c="#ee00ee", alpha=0.3)
-plt.scatter(levels, maxv*qls/numpy.max(df[5]), s=5.0, c="#cc00cc", zorder=4)
-popt, pcov = curve_fit(func, df[1], maxv*df[5]/numpy.max(df[5]))
-plt.plot(levels, func(levels, *popt))
+#plt.scatter(levels, maxv*mnstrs/numpy.max(stretches), s=5.0, c="#0000cc", zorder=4)
+popt, pcov = curve_fit(func, q_levels, maxv*stretches/numpy.max(stretches))
+#plt.plot(levels, func(levels, *popt))
+
+#plt.scatter(q_levels, maxv*wilsons/numpy.max(wilsons), s=0.1, c="#ee00ee", alpha=0.3)
+#plt.scatter(levels, maxv*qls/numpy.max(wilsons), s=5.0, c="#cc00cc", zorder=4)
+popt, pcov = curve_fit(func, q_levels, maxv*wilsons/numpy.max(wilsons))
+#plt.plot(levels, func(levels, *popt))
 
 
 #print(corr)
