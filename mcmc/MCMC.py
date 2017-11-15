@@ -7,7 +7,7 @@ from backfit.utils.utils import load_new_diffs, load_mcmc_diffs
 from utils.utils import extract_runs_w_timestamp
 
 if __name__ == '__main__':
-    n_users = 1000
+    n_users = -1
     n_steps = 100000
     cats, cat_lookup, all_qids, users, _stretches_, levels, cat_ixs = init_objects(n_users, seed=666)
     passdiffs, stretches, passquals, all_qids = load_new_diffs()
@@ -16,7 +16,7 @@ if __name__ == '__main__':
 
     observed_qids = []
 
-    usersf = open("mcmc_uesrs.txt","w")
+    usersf = open("mcmc_users.txt","w")
 
     for u in users:
         print("user = ", u)
@@ -87,5 +87,6 @@ if __name__ == '__main__':
 
     fout = open("mcmc_results.csv", "w")
     for qix, qid in enumerate(observed_qids):
-        fout.write(str(qid) +","+ str(q_cnt[qix])+"\n")
+        # fout.write(str(qid) +","+ str(q_cnt[qix])+"\n")
+        fout.write(",".join(map(str,( qid, levels[qid], q_cnt[qix], passdiffs[qid], stretches[qid], passquals[qid] )))+"\n")
     fout.close()
