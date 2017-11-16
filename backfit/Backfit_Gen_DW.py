@@ -153,14 +153,14 @@ def generate_run_files(alpha, _featureset_to_use, _w, fade, cats, cat_lookup, al
                 upd = lev / n_atts
 
             if (n_pass>0):
-                if n_classes:
+                if n_classes==2:
                     y = 0
                 else:
                     y = (-1 if n_atts==1 else 0)
-                X[catix] = (1.0-alpha)*X[catix] + alpha*upd
+                X[catix] = 1 #(1.0-alpha)*X[catix] + alpha*upd
             else:
                 y = 1
-                X[catix] = 0
+                #X[catix] = 0
                 #X[catix] = retain*X[catix] -(1-retain)*upd
 
                 #print("in",catix,"put diff",(qdiff/n_atts))
@@ -208,22 +208,21 @@ if __name__ == '__main__':
     report_name = "report_DW{}_{}_fb{}_opt{}_scale{}_{}.txt".format(0, n_users, str(1 if force_balanced_classes else 0), ("001" if optimise_predictors else "0"), ("1" if do_scaling else "0"), featureset_to_use)
     if do_test:
         report = open(report_name,"w")
-    for w in [DW_LEVEL, DW_STRETCH, DW_NATTS]: #, DW_NO_WEIGHT, DW_NATTS]: #, DW_LEVEL, DW_PASSRATE, DW_MCMC, DW_STRETCH]:
-        for alpha in [1.0, 0.33, 0.67, 1.0]:
-            for fade in [0.0, 0.33, 0.5, 0.67, 1.0]:
-                #for retain in [i / 20.0 for i in range(21)]:
-                #for retain in [i / 10.0 for i in range(11)]:
-                # for retain in [1.0]:
+    for w in [DW_BINARY]: #, DW_NO_WEIGHT, DW_NATTS]: #, DW_LEVEL, DW_PASSRATE, DW_MCMC, DW_STRETCH]:
+        # for alpha in [0.0, 0.33, 0.67, 1.0]:
+        #     for fade in [0.0, 0.33, 0.5, 0.67, 1.0]:
+        for alpha in [1.0]:
+            for phi_retain in [1.0]:
                 print(cat_ixs)
 
                 if do_test:
                     print("testing")
-                    xfn = "F33_{}_{}_{}_X.csv".format(str(alpha), str(fade), w)
-                    yfn = "F33_{}_{}_{}_y.csv".format(str(alpha), str(fade), w)
-                    X_train, X_test, y_pred_tr, y_pred, y_true, scaler = train_and_test(alpha, predictors, predictor_params, xfn, yfn, n_users, percTest, featureset_to_use, w, fade, force_balanced_classes, do_scaling, optimise_predictors, report=report)
-                    reports.append((alpha, report_name, y_true, y_pred))
+                    xfn = "F33_{}_{}_{}_X.csv".format(str(alpha), str(phi_retain), w)
+                    yfn = "F33_{}_{}_{}_y.csv".format(str(alpha), str(phi_retain), w)
+                    X_train, X_test, y_pred_tr, y_pred, y_true, scaler = train_and_test(alpha, predictors, predictor_params, xfn, yfn, n_users, percTest, featureset_to_use, w, phi_retain, force_balanced_classes, do_scaling, optimise_predictors, report=report)
+                    #reports.append((alpha, report_name, y_true, y_pred))
                 else:
-                    xfn, yfn = generate_run_files(alpha, featureset_to_use, w, fade, cats, cat_lookup, all_qids, users, stretches, passdiffs, passquals, levels, mcmcdiffs, cat_ixs)
+                    xfn, yfn = generate_run_files(alpha, featureset_to_use, w, phi_retain, cats, cat_lookup, all_qids, users, stretches, passdiffs, passquals, levels, mcmcdiffs, cat_ixs)
                     print("gen complete, train files are",xfn,yfn)
                     #reports.append((0, report_name, y_true, y_pred))
 
@@ -232,13 +231,13 @@ if __name__ == '__main__':
         print("complete, report file is:", report_name)
 
 
-    wid = n_classes+1
-    if do_test:
-        retains = []
-        f1s = []
-        mx = numpy.ndarray(shape=(len(reports), wid))
-        for ix, (alpha, r, ytr, ypd) in enumerate(reports):
-            mx[ix, 0] = alpha
-            f1s = f1_score(ytr, ypd, average=None)
-            mx[ix, 1:wid] = f1s
-        numpy.savetxt(report_name+"_to_plot.csv", mx)
+    # wid = n_classes+1
+    # if do_test:
+    #     retains = []
+    #     f1s = []
+    #     mx = numpy.ndarray(shape=(len(reports), wid))
+    #     for ix, (alpha, r, ytr, ypd) in enumerate(reports):
+    #         mx[ix, 0] = alpha
+    #         f1s = f1_score(ytr, ypd, average=None)
+    #         mx[ix, 1:wid] = f1s
+    #     numpy.savetxt(report_name+"_to_plot.csv", mx)
