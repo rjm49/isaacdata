@@ -1,6 +1,9 @@
+import multiprocessing
 import os, sys
+import threading
+from multiprocessing.pool import Pool
 
-from sklearn.naive_bayes import BernoulliNB
+from sklearn.naive_bayes import BernoulliNB, GaussianNB
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -26,86 +29,44 @@ QENC_DIFF=False
 qenc_width = 33
 n_classes = 2
 
-FEAT_F33 = "F33"
-
 n_users = 1000
-max_runs = None #10000
+max_runs = None
 percTest = 0.20
 
 predictors = [
-           DummyClassifier(strategy="stratified"),
-             DummyClassifier(strategy="uniform"),
-            BernoulliNB(),
-              #SGDClassifier(max_iter=1000, tol=1e-3, n_jobs=-1, class_weight="balanced"),
-            #SVC(max_iter=100, class_weight='balanced'),
-            #SVC(max_iter=10000, kernel="linear", class_weight='balanced'),
-              LinearSVC(max_iter=100, class_weight="balanced"),
-              # PassiveAggressiveClassifier(class_weight="balanced", max_iter=1000, tol=1e-3, n_jobs=-1),
-             MLPClassifier(max_iter=100, nesterovs_momentum=True, early_stopping=True), #, activation="logistic"),
-              #Perceptron(max_iter=1000),
-            #GaussianNB(),
-            LogisticRegression(class_weight='balanced', n_jobs=-1),
-#             OneClassSVM()numpy
+    DummyClassifier(strategy="stratified"),
+    DummyClassifier(strategy="uniform"),
+    BernoulliNB(),
+    LinearSVC(max_iter=100, class_weight="balanced"),
+    MLPClassifier(max_iter=100, nesterovs_momentum=True, early_stopping=True), #, activation="logistic"),
+    LogisticRegression(class_weight='balanced'),
+    GaussianNB(),
 ]
 
 predictor_params = [
-                    None,
-                    None,
-                    {'n_iter':50, 'alpha': numpy.logspace(-3, 2) },
-                    #{'n_iter':250,'C': numpy.logspace(-3, 2), 'gamma': numpy.logspace(-3, 2)},
-#                     {'n_iter':50,'C': numpy.logspace(-3, 2), 'gamma': numpy.logspace(-3, 2)},
-                     {'n_iter':50,'C': numpy.logspace(-3, 2)},
-#                             None,
-#                     {'n_iter':200,'activation':['relu'], 'hidden_layer_sizes':[(100,),(100,50),(50,),(20,),(10,)], 'learning_rate_init':[0.001, 0.01, 0.1], 'alpha': numpy.logspace(-6,-1) },
-                    {'n_iter':250,'hidden_layer_sizes':[(100,), (66,10)], 'learning_rate_init':[0.001, 0.01, 0.1], 'alpha': numpy.logspace(-6,2) },
-                      # None,
-#                         None,
-                        {'n_iter':50,'C': numpy.logspace(-3, 2)},
-                        #  None,
-                    ]
+    None,
+    None,
+    {'n_iter':50, 'alpha': numpy.logspace(-3, 2) },
+    {'n_iter':50,'C': numpy.logspace(-3, 2)},
+    {'n_iter':250,'hidden_layer_sizes':[(100,), (66,10)], 'learning_rate_init':[0.001, 0.01, 0.1], 'alpha': numpy.logspace(-6,2) },
+    {'n_iter':50,'C': numpy.logspace(-3, 2)},
+    None,
+]
 
-# def get_qenc(catix, passrate, stretch, lev, mcmc, mode=None):
-#     qenc = numpy.zeros(shape=qenc_width)
-#     #qenc[:] = 0.0 #reset question encoding
-#     weight = 1.0
-#     if mode== DW_NATTS or mode==DW_STRETCH:
-#         weight = stretch
-#     elif mode==DW_PASSRATE:
-#         weight = passrate
-#     elif mode==DW_LEVEL:
-#         weight = lev
-#     elif mode==DW_MCMC:
-#         weight = mcmc
-#     qenc[catix]=weight # set the next q category and diff
-#     return qenc
 
-def generate_run_files(alpha, _featureset_to_use, _w, fade, cats, cat_lookup, all_qids, users, stretches, passrates, passquals, levels, mcmcdiffs, cat_ixs):
-    stem = _featureset_to_use+"_"+str(alpha) + "_" + str(fade) + "_" + _w
-    x_filename= stem+"_X.csv"
-    y_filename= stem+"_y.csv"
-
-    X_file = open(stem+"_X.csv","w")
-    y_file = open(stem+"_y.csv","w")
+def generate_binwgt_run_files(xfn, yfn, alpha, _w, fade, cats, cat_lookup, all_qids, users, stretches, passrates, passquals, levels, mcmcdiffs, cat_ixs, n_classes):
+    X_file = open(xfn,"w")
+    y_file = open(yfn,"w")
 
     n_features = len(cats)
-    #     all_X = numpy.zeros(shape=(0,n_features))
 
     print("using n_features=", n_features)
-
-    # tmx = numpy.loadtxt("../mcmc/X.csv", delimiter=",") # load the prob transition mx
-    # qf = open("../mcmc/obsqs.txt")
-    # qindex = [rec.split(",")[0] for rec in qf.read().splitlines()]
-    # qf.close()
-    #
-    # print(tmx.shape[0], len(qindex))
-    # assert tmx.shape[0] == len(qindex)
-    # print("loaded transition data")
 
     run_ct= 0
     X = numpy.zeros(shape=n_features) #init'se a new feature vector w same width as all_X
     print("Generating files for {} users...".format(len(users)))
     for u in users:
-        print("user = ", u)
+        #print("user = ", u)
         X[:]= 0.0
 
         attempts = pd.read_csv("../by_user/{}.txt".format(u), header=None)
@@ -116,63 +77,25 @@ def generate_run_files(alpha, _featureset_to_use, _w, fade, cats, cat_lookup, al
             ts, q, n_atts, n_pass = run
             qt = q.replace("|","~")
             lev = levels[qt]
-            if lev<2:
+            if lev==0:
                 continue
 
             qdiff = calc_qdiff(qt, passrates, stretches, levels, mcmcdiffs, mode=_w)
 
             catix = cat_ixs[ cat_lookup[qt] ]
 
-            passrate = passrates[qt]
-            qpassqual = passquals[qt]
-            stretch = stretches[qt]
-            mcmc = mcmcdiffs[qt] if qt in mcmcdiffs else 0
-            # mcmc = 0
-            # if(n_pass > 0):
-            #     tailix = qindex.index(qt)
-            #     headix = qindex.index(qt)
-            #     mcmc = tmx[headix, tailix]
-            #     print ("mcmc = ",mcmc)
-            #print(qindex)
-
             qenc = numpy.zeros(shape=qenc_width)
-            # qenc[:] = 0.0 #reset question encoding
-            q_weight = 1.0
-            if _w == DW_NATTS or _w == DW_STRETCH:
-                q_weight = stretch
-            elif _w == DW_PASSRATE:
-                q_weight = passrate
-            elif _w == DW_LEVEL:
-                q_weight = lev
-            elif _w == DW_MCMC:
-                q_weight = mcmc
-            qenc[catix] = q_weight  # set the next q category and diff
+            qenc[catix] = 1.0
 
             X_file.write(",".join([str(x) for x in X])+","+",".join([str(e) for e in qenc])+"\n")
             X = X * fade
-
-            a_weight = 1.0
-            if _w == DW_BINARY:
-                a_weight = 1.0
-            elif _w == DW_NATTS:
-                a_weight = n_atts
-            elif _w == DW_NO_WEIGHT:
-                a_weight = 1.0 / n_atts
-            elif _w == DW_PASSRATE:
-                a_weight = passrate / n_atts
-            elif _w == DW_STRETCH:
-                a_weight = stretch / n_atts
-            elif _w == DW_MCMC:
-                a_weight = mcmc / n_atts
-            elif _w == DW_LEVEL:
-                a_weight = lev / n_atts
 
             if (n_pass>0):
                 if n_classes == 2:
                     y = 0
                 else:
                     y = (-1 if n_atts==1 else 0)
-                X[catix] = 1 # (1.0-alpha)*X[catix] + alpha*a_weight
+                X[catix] =(1.0-alpha)*X[catix] + alpha*1.0
             else:
                 y = 1
             y_file.write(str(y)+"\n")
@@ -182,11 +105,8 @@ def generate_run_files(alpha, _featureset_to_use, _w, fade, cats, cat_lookup, al
     X_file.close()
     y_file.close()
     print(n_users, "users", run_ct,"runs", run_ct/float(n_users), "rpu")
-    return x_filename,y_filename
-
 
 if __name__ == '__main__':
-    featureset_to_use=FEAT_F33
     cmd='test'
     if len(sys.argv) < 2:
         cmd = input("command please?")
@@ -198,38 +118,40 @@ if __name__ == '__main__':
     else:
         do_test = True
 
-    force_balanced_classes = True
+    n_classes = 2
+    force_balanced_classes = False
     do_scaling = True
     optimise_predictors = True
     print("n_users",n_users)
     cats, cat_lookup, all_qids, users, _stretches_, levels, cat_ixs = init_objects(n_users, seed=666)
 
-    #users = open("../mcmc/mcmc_uesrs.txt").read().splitlines()
-
     passdiffs, stretches, passquals, all_qids = load_new_diffs()
-    mcmcdiffs = load_mcmc_diffs()
+    mcmc_diffs = load_mcmc_diffs()
 
     reports =[]
-    report_name = "report_DW{}_{}_fb{}_opt{}_scale{}_{}.txt".format(0, n_users, str(1 if force_balanced_classes else 0), ("001" if optimise_predictors else "0"), ("1" if do_scaling else "0"), featureset_to_use)
+    report_name = "report_DW{}_{}_fb{}_opt{}_scale{}_{}.txt".format(0, n_users, str(1 if force_balanced_classes else 0), ("001" if optimise_predictors else "0"), ("1" if do_scaling else "0"), "BW33")
     if do_test:
         report = open(report_name,"w")
-    for w in [DW_BINARY]: #, DW_NO_WEIGHT, DW_NATTS]: #, DW_LEVEL, DW_PASSRATE, DW_MCMC, DW_STRETCH]:
-        for alpha in [1.0]:
-            for phi_retain in [1.0]:
-                print(cat_ixs)
+    jobs = []
+    for w in [DW_BINARY]:
+        for alpha in [0.9, 0.6, 0.3, 0.1]:
+            for phi_retain in [1.0, 0.75, 0.25, 0.0]:
+                xfn = "BW33_{}_{}_{}_X.csv".format(str(alpha), str(phi_retain), w)
+                yfn = "BW33_{}_{}_{}_y.csv".format(str(alpha), str(phi_retain), w)
                 if do_test:
                     print("testing")
-                    xfn = "F33_{}_{}_{}_X.csv".format(str(alpha), str(phi_retain), w)
-                    yfn = "F33_{}_{}_{}_y.csv".format(str(alpha), str(phi_retain), w)
-                    X_train, X_test, y_pred_tr, y_pred, y_true, scaler = train_and_test(alpha, predictors, predictor_params, xfn, yfn, n_users, percTest, featureset_to_use, w, phi_retain, force_balanced_classes, do_scaling, optimise_predictors, report=report)
+                    X_train, X_test, y_pred_tr, y_pred, y_true, scaler = train_and_test(alpha, predictors, predictor_params, xfn, yfn, n_users, percTest, "BW33", w, phi_retain, force_balanced_classes, do_scaling, optimise_predictors, report=report)
                     reports.append((alpha, report_name, y_true, y_pred))
                 else:
-                    xfn, yfn = generate_run_files(alpha, featureset_to_use, w, phi_retain, cats, cat_lookup, all_qids, users, stretches, passdiffs, passquals, levels, mcmcdiffs, cat_ixs)
+                    prms = (xfn, yfn, alpha, w, phi_retain, cats, cat_lookup, all_qids, users, stretches, passdiffs, passquals, levels, mcmc_diffs, cat_ixs, n_classes)
+                    #p = threading.Thread(target= generate_binwgt_run_files, args = prms)
+                    #jobs.append(p)
+                    #p.start()
+                    generate_binwgt_run_files(*prms)
                     print("gen complete, train files are",xfn,yfn)
     if do_test:
         report.close()
         print("complete, report file is:", report_name)
-
 
     wid = n_classes+1
     if do_test:

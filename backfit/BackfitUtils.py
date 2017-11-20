@@ -51,9 +51,8 @@ def init_objects(n_users, seed=None):
         diffs[q_id] = -1 if (diff_raw == float("inf")) else diff_raw
 
         lv = numpy.float(r[LEV])
-        levels[q_id]= 0 if isnan(lv) else (1+lv)
+        levels[q_id]= 0 if isnan(lv) else lv
 
-        
 
     #replace any negative (formerlly inf) values with the max system difficulty
     max_diff = max(diffs.values())
