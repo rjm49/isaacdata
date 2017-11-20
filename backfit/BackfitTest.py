@@ -6,12 +6,12 @@ import sys
 import numpy
 from sklearn.feature_selection.univariate_selection import SelectKBest
 
-from backfit.clf_tuning import run_random_search
-
 sys.path.append(os.path.join(os.path.dirname(__file__), '.'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from backfit.clf_tuning import run_random_search
+
 from sklearn.metrics.classification import classification_report, accuracy_score, f1_score, recall_score, \
-    precision_score
+    precision_score, precision_recall_fscore_support
 from sklearn.model_selection._split import train_test_split
 from sklearn.preprocessing.data import StandardScaler
 
@@ -19,7 +19,6 @@ from utils.utils import balanced_subsample
 
 
 def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, n_users, percTest, featureset_to_use, diff_weighting, fade, force_balanced_classes, do_scaling, optimise_predictors, report):
-
     all_X = numpy.loadtxt(x_filename, delimiter=",")
     all_y = numpy.loadtxt(y_filename, delimiter=",")
 
@@ -43,6 +42,7 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
         X_train = scaler.fit_transform(X_train)
         X_test = scaler.transform(X_test)
 
+    classes = numpy.unique(y_train)
     if(force_balanced_classes):
         X_train, y_train = balanced_subsample(X_train, y_train, 1.0) #0.118)
 
@@ -53,7 +53,6 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
     for ix,p in enumerate(predictors):
         print(type(p))
         print(p.get_params().keys())
-#             input("prompt")
         if optimise_predictors==True and predictor_params[ix]!=None:
             pbest = run_random_search(p, X_train, y_train, predictor_params[ix])
         else:
@@ -71,32 +70,27 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
     report.write("* ** *** | | /_ |^|  |) ||  |  \ | | *** ** *\n")
     report.write("runs="+str(all_X.shape[0])+"\n")
 
-#     pca = PCA(n_components=3)
-#     pca.fit(X_train)
+    for ix,p in enumerate(predictors):
+        report.write(str(p).replace(",",";")+"\n")
 
-    for p in predictors:
-        report.write("------Forced balance=" + str(force_balanced_classes) +", "+featureset_to_use+", WGT=" + diff_weighting +", LEARN=" + str(alpha) + " FADE=" + str(fade) + " SCALE=" + str(do_scaling) + "\n")
-        report.write(str(p)+"\n")
-#         report.write("TRAIN\n")
+        report.write("FB,WGT,ALPHA,PHI,SCL\n")
+        report.write(",".join(map(str, (force_balanced_classes, diff_weighting, alpha, fade, do_scaling))) + "\n")
+
         y_pred_tr = p.predict(X_train)
-#         report.write(classification_report(y_train, y_pred_tr)+"\n")
-        
-        report.write("TEST\n")
         y_pred = p.predict(X_test)
-        report.write(classification_report(y_true=y_test, y_pred=y_pred)+"\n")
 
-        report.write( str(precision_score(y_test, y_pred, average=None))+"\n")
-        report.write( str(recall_score(y_test, y_pred, average=None))+"\n")
-        report.write( str(f1_score(y_test, y_pred, average=None))+"\n")
+        # p = precision_score(y_test, y_pred, average=None, labels=classes)
+        # r = recall_score(y_test, y_pred, average=None, labels=classes)
+        # F = f1_score(y_test, y_pred, average=None, labels=classes)
+        p,r,F,s = precision_recall_fscore_support(y_test, y_pred, labels=classes, average=None, warn_for=('precision', 'recall', 'f-score'))
+        avp, avr, avF, _ = precision_recall_fscore_support(y_test, y_pred, labels=classes, average='weighted',
+                                                     warn_for=('precision', 'recall', 'f-score'))
+        for ix,c in enumerate(classes):
+            report.write("{},{},{},{},{}\n".format(c,p[ix],r[ix],F[ix],s[ix]))
+        report.write("avg,{},{},{},{}\n".format(avp, avr, avF, numpy.sum(s)))
 
-        # for c in set(y_pred): #test accy for each class
-        #     acc = accuracy_score(y_test[y_test==c], y_pred[y_test==c])
-        #     report.write("{} : {}\n".format(c,acc))
-
-        overall = accuracy_score(y_test, y_pred)
-        report.write("Acc {}\n".format(overall))
-
-        report.write("------END OF CLASSIFIER------\n")
+        # report.write(classification_report(y_test, y_pred)+"\n")
+        # report.write("------END OF CLASSIFIER------\n")
         report.flush()
 
     return X_train, X_test, y_pred_tr, y_pred, y_test, scaler

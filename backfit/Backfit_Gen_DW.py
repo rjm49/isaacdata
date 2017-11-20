@@ -168,13 +168,22 @@ def generate_run_files(alpha, _featureset_to_use, _w, fade, cats, cat_lookup, al
                 a_weight = lev / n_atts
 
             if (n_pass>0):
-                if n_classes == 2:
+                if n_classes==2:
                     y = 0
                 else:
                     y = (-1 if n_atts==1 else 0)
-                X[catix] = 1 # (1.0-alpha)*X[catix] + alpha*a_weight
+                X[catix] = 1 #(1.0-alpha)*X[catix] + alpha*upd
             else:
                 y = 1
+                #X[catix] = 0
+                #X[catix] = retain*X[catix] -(1-retain)*upd
+
+                #print("in",catix,"put diff",(qdiff/n_atts))
+                # if retain < 0:
+                # else:
+                #     X[catix] += qdiff / n_atts
+            # else:
+            #     X[catix] = - mcmc / n_atts
             y_file.write(str(y)+"\n")
 
         X_file.flush()
@@ -223,7 +232,7 @@ if __name__ == '__main__':
                     xfn = "F33_{}_{}_{}_X.csv".format(str(alpha), str(phi_retain), w)
                     yfn = "F33_{}_{}_{}_y.csv".format(str(alpha), str(phi_retain), w)
                     X_train, X_test, y_pred_tr, y_pred, y_true, scaler = train_and_test(alpha, predictors, predictor_params, xfn, yfn, n_users, percTest, featureset_to_use, w, phi_retain, force_balanced_classes, do_scaling, optimise_predictors, report=report)
-                    reports.append((alpha, report_name, y_true, y_pred))
+                    #reports.append((alpha, report_name, y_true, y_pred))
                 else:
                     xfn, yfn = generate_run_files(alpha, featureset_to_use, w, phi_retain, cats, cat_lookup, all_qids, users, stretches, passdiffs, passquals, levels, mcmcdiffs, cat_ixs)
                     print("gen complete, train files are",xfn,yfn)
@@ -232,13 +241,13 @@ if __name__ == '__main__':
         print("complete, report file is:", report_name)
 
 
-    wid = n_classes+1
-    if do_test:
-        retains = []
-        f1s = []
-        mx = numpy.ndarray(shape=(len(reports), wid))
-        for ix, (alpha, r, ytr, ypd) in enumerate(reports):
-            mx[ix, 0] = alpha
-            f1s = f1_score(ytr, ypd, average=None)
-            mx[ix, 1:wid] = f1s
-        numpy.savetxt(report_name+"_to_plot.csv", mx)
+    # wid = n_classes+1
+    # if do_test:
+    #     retains = []
+    #     f1s = []
+    #     mx = numpy.ndarray(shape=(len(reports), wid))
+    #     for ix, (alpha, r, ytr, ypd) in enumerate(reports):
+    #         mx[ix, 0] = alpha
+    #         f1s = f1_score(ytr, ypd, average=None)
+    #         mx[ix, 1:wid] = f1s
+    #     numpy.savetxt(report_name+"_to_plot.csv", mx)
