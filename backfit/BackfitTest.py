@@ -19,27 +19,19 @@ from utils.utils import balanced_subsample
 
 
 def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, n_users, percTest, featureset_to_use, diff_weighting, fade, force_balanced_classes, do_scaling, optimise_predictors, report):
-    
-    all_X = numpy.genfromtxt(x_filename, delimiter=",", max_rows=100000)
-#     yf = open("all_y.csv", 'r').readlines()
-#     all_y = numpy.asarray([numpy.array(s.split(",")).astype('float64') for s in yf], dtype=numpy.float64)
-    all_y = numpy.genfromtxt(y_filename, delimiter=",", max_rows=100000)
+
+    all_X = numpy.loadtxt(x_filename, delimiter=",")
+    all_y = numpy.loadtxt(y_filename, delimiter=",")
 
     print("loaded X and y files")
     
-    for i in range(all_X.shape[0]):
-        rowsum = numpy.sum(all_X[i,])
-#         print("X {} {}".format(i, rowsum))
-        if numpy.isnan(rowsum):
-            print("nan in", x_filename)
-            exit()
+    if numpy.isnan(all_X.any()):
+        print("nan in", x_filename)
+        exit()
 
-    for i in range(all_y.shape[0]):
-        rowsum = numpy.sum(all_y[i,])
-#         print("y {} {}".format(i, rowsum))
-        if numpy.isnan(rowsum):
-            print("nan in", y_filename)
-            exit()
+    if numpy.isnan(all_y.any()):
+        print("nan in", y_filename)
+        exit()
 
     #print("selecting balanced subsample")
     print("t t split")
@@ -47,23 +39,13 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
     
     
     scaler = StandardScaler()
-    #scaler = MinMaxScaler()
     if do_scaling:
         X_train = scaler.fit_transform(X_train)
         X_test = scaler.transform(X_test)
 
-#     kbest = SelectKBest()
-#     X_train = kbest.fit_transform(X_train, y_train)
-#     X_test = kbest.transform(X_test)
-#     print(kbest.get_support(indices=True))    
-#     print(X_train.shape)
-    
     if(force_balanced_classes):
         X_train, y_train = balanced_subsample(X_train, y_train, 1.0) #0.118)
 
-#     X_train = X_train[y_train==1] #only keep in-ZPD classes
-#     y_train = y_train[y_train==1]
-    
     print("X_train shape:", X_train.shape)
     print("X_test shape:", X_test.shape)
 
@@ -93,7 +75,7 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
 #     pca.fit(X_train)
 
     for p in predictors:
-        report.write("------Forced balance=" + str(force_balanced_classes) +", F33, WGT=" + diff_weighting +", LEARN=" + str(alpha) + " FADE=" + str(fade) + " SCALE=" + str(do_scaling) + "\n")
+        report.write("------Forced balance=" + str(force_balanced_classes) +", "+featureset_to_use+", WGT=" + diff_weighting +", LEARN=" + str(alpha) + " FADE=" + str(fade) + " SCALE=" + str(do_scaling) + "\n")
         report.write(str(p)+"\n")
 #         report.write("TRAIN\n")
         y_pred_tr = p.predict(X_train)
