@@ -30,17 +30,9 @@ GEND_XS_FOR_CURVES = numpy.linspace(1,6,20)
 
 n_users = -1
 
-def plot_it(df, axs, filter_name):
-    print("plot",filter_name)
+def plot_it(df, ax, filter_name, offs):
     mcmc_mns = numpy.array([])
-    mnprs = numpy.array([])
-    mnstrs = numpy.array([])
-    stds = numpy.array([])
-    qls = numpy.array([])
-    wilson_sds = numpy.array([])
-    stretch_sds = numpy.array([])
-    passrate_sds = numpy.array([])
-
+    mcmc_stds = numpy.array([])
     levels = numpy.unique(df[LEVEL_IX])
 
     for L in levels:
@@ -48,30 +40,13 @@ def plot_it(df, axs, filter_name):
         #invals = numpy.max(df[2]) - rows[2]
         invals = rows[MCMC_IX]
         m = numpy.mean(invals)
-
-        mstr = numpy.mean(rows[STRETCH_IX])
-        stretch_sd = numpy.std(rows[STRETCH_IX])
-
-        mpr = numpy.mean(rows[PASSRATE_IX])
-        passrate_sd = numpy.std(rows[PASSRATE_IX])
-
-        mn_wilson = numpy.mean(rows[WILSON_IX])
-        wilson_sd = numpy.std(rows[WILSON_IX])
-
         std = numpy.std(invals)
-
         mcmc_mns = numpy.append(mcmc_mns, m)
+        mcmc_stds = numpy.append(mcmc_stds, std)
 
-        mnprs = numpy.append(mnprs, mpr)
-        mnstrs = numpy.append(mnstrs, mstr)
-        stretch_sds = numpy.append(stretch_sds, stretch_sd)
-        passrate_sds = numpy.append(passrate_sds, passrate_sd)
 
-        stds = numpy.append(stds, std)
-        qls = numpy.append(qls, mn_wilson)
-        wilson_sds = numpy.append(wilson_sds, wilson_sd)
-
-    q_levels = df[1]
+    q_levels = df[1]+offs
+    l_offset = levels+offs
     mcmcs = df[MCMC_IX]
     stretches = df[STRETCH_IX]
     passrates = df[PASSRATE_IX]
@@ -84,30 +59,10 @@ def plot_it(df, axs, filter_name):
     #plt.scatter(q_levels, maxv*passrates/numpy.max(passrates), s=0.1, c="#66cc66", alpha=0.3)
     # plt.plot(lvlt, spl(lvlt), c="#ff8800")
 
-    def func(x, aa, a, b, c):
-        return aa*(x**3) + a*(x*x) + b*x + c
-    dotalpha=0.1
-    popt, pcov = curve_fit(func, q_levels, mcmcs)
-    axs[0].scatter(q_levels, mcmcs, s=5.0, c=col[MCMC_IX], alpha=dotalpha, label=None)
-    axs[0].errorbar(levels, mcmc_mns, stds, linestyle="None", c=col[MCMC_IX], fmt="none", capsize=4)
-    axs[0].plot(GEND_XS_FOR_CURVES, func(GEND_XS_FOR_CURVES, *popt), label="mcmc", c=col[MCMC_IX])
-    axs[0].set_title("MCMC prob for {} qns".format(filter_name))
+    dotalpha=0.5
 
-    popt, pcov = curve_fit(func, q_levels, passrates)
-    axs[1].scatter(q_levels, passrates, s=5.0, c=col[PASSRATE_IX], alpha=dotalpha, label=None)
-    axs[1].errorbar(levels, mnprs, passrate_sds, linestyle="None", c=col[PASSRATE_IX], fmt="none", capsize=4)
-    axs[1].plot(GEND_XS_FOR_CURVES, func(GEND_XS_FOR_CURVES, *popt), label="passrate", c=col[PASSRATE_IX])
-
-    popt, pcov = curve_fit(func, q_levels, wilsons)
-    axs[1].errorbar(levels, qls, wilson_sds, c=col[WILSON_IX], capsize=4)
-    axs[1].plot(GEND_XS_FOR_CURVES, func(GEND_XS_FOR_CURVES, *popt), label="p/r uncertainty", c=col[WILSON_IX])
-    axs[1].set_title("Passrate + quality for {} qns".format(filter_name))
-
-    popt, pcov = curve_fit(func, q_levels, stretches)
-    axs[2].scatter(q_levels, stretches, s=5.0, c=col[STRETCH_IX], alpha=dotalpha, label=None)
-    axs[2].errorbar(levels, mnstrs, stretch_sds, linestyle="None", c=col[STRETCH_IX], fmt="none", capsize=4)
-    axs[2].plot(GEND_XS_FOR_CURVES, func(GEND_XS_FOR_CURVES, *popt), label="stretch", c=col[STRETCH_IX])
-    axs[2].set_title("Stretch for {} qns".format(filter_name))
+    ax.scatter(q_levels, mcmcs, s=10.0, alpha=dotalpha, label=filter_name)
+    ax.scatter(l_offset, mcmc_mns, s=10.0, alpha=1, c="black")
 
 # print(qmode_df.shape[0])
 cats, cat_lookup, all_qids, users, _stretches_, levels, cat_ixs = init_objects(n_users)
@@ -115,27 +70,27 @@ passdiffs, stretches, passquals, all_qids = load_new_diffs()
 df = pandas.read_csv("mcmc_results.csv", header=None, index_col=None)
 print(df.shape)
 df = df[df[LEVEL_IX]>0] # get rid of levels of 0 or less
+df.iloc[:,1] -= 1.0
 print(df.shape)
 qmode_df = pandas.read_csv("../atypes.csv", header=None, index_col=None)
 print(qmode_df.shape)
 filters = pandas.unique(qmode_df[7])
 matplotlib.rcParams.update({'font.size': 10})
-fig, axs = plt.subplots(3, 3)
+fig, ax = plt.subplots(1, 1)
+
+offsets = [0.0, 0.1, 0.2, 0.3]
 for ix, filter in enumerate(filters): # ["ALL", "choice", "quantity", "symbol"]:
     non_mcs = qmode_df[qmode_df[7]==filter][0]
-    #print(non_mcs)
-    #print(pandas.unique(non_mcs))
-    #print(non_mcs.size)
     nw = df[ df[0].isin(non_mcs) ]
     if nw.shape[0]==0:
         continue
     print(filter,"-> nw shape", nw.shape[0])
     # print(nw)
 
-    plot_it(nw, axs[ix].reshape(-1), filter)
+    plot_it(nw, ax, filter, offsets[ix])
 
 fig.subplots_adjust(hspace=.5)
 fig.suptitle("Data-driven weightings vs expert-suggested levels")
-# fig.legend()
+ax.legend()
 # plt.tight_layout()
 plt.show()
