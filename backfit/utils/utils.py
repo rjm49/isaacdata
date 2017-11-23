@@ -177,7 +177,7 @@ def calc_qdiff(qt, passrates, stretches, levels, mcmcdiffs, mode=None):
     elif(mode == DW_LEVEL):
 #         assert not min(levels.values())<0
 #         assert not max(levels.values())>7
-        return levels[qt] #plus-one to convert [0..6] to [1..7]
+        return 1+levels[qt] #plus-one to convert [0..6] to [1..7]
     elif(mode == DW_NO_WEIGHT):
         return 1.0
     elif(mode == DW_BINARY):

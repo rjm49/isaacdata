@@ -51,7 +51,7 @@ def plot_it(df, ax, filter_name, offs):
     stretches = df[STRETCH_IX]
     passrates = df[PASSRATE_IX]
     wilsons = df[WILSON_IX]
-    col = ["#000000","#00ff00","#ff8800","#880000","#008888","#ff8888"]
+    col = ["#000000","#448844","#ff8800","#880000","#008888","#ff8888"]
 
     maxv = numpy.max(mcmcs)
     #plt.scatter(q_levels, maxv*allinvals/numpy.max(mcmcs), s=0.1, c="#ff8800", alpha=0.3)
@@ -61,15 +61,17 @@ def plot_it(df, ax, filter_name, offs):
 
     dotalpha=0.5
 
-    ax.scatter(q_levels, mcmcs, s=10.0, alpha=dotalpha, label=filter_name)
-    ax.scatter(l_offset, mcmc_mns, s=10.0, alpha=1, c="black")
+    ax.scatter(q_levels, mcmcs, s=10.0, alpha=dotalpha, label=None, c=col[1+int(offs*10)])
+    # ax.plot(l_offset, mcmc_mns, alpha=0.5, c=col[1+int(offs*10)], label=filter_name)
+    # ax.errorbar(l_offset, mcmc_mns, mcmc_stds, c=col[1+int(offs*10)], fmt="none", capsize=4)
+    # ax.scatter(l_offset, mcmc_mns, s=10.0, alpha=1, c="black")
 
 # print(qmode_df.shape[0])
 cats, cat_lookup, all_qids, users, _stretches_, levels, cat_ixs = init_objects(n_users)
 passdiffs, stretches, passquals, all_qids = load_new_diffs()
 df = pandas.read_csv("mcmc_results.csv", header=None, index_col=None)
 print(df.shape)
-df = df[df[LEVEL_IX]>0] # get rid of levels of 0 or less
+df = df[df[LEVEL_IX]>1] # get rid of levels of 0 or less
 df.iloc[:,1] -= 1.0
 print(df.shape)
 qmode_df = pandas.read_csv("../atypes.csv", header=None, index_col=None)
@@ -90,7 +92,9 @@ for ix, filter in enumerate(filters): # ["ALL", "choice", "quantity", "symbol"]:
     plot_it(nw, ax, filter, offsets[ix])
 
 fig.subplots_adjust(hspace=.5)
-fig.suptitle("Data-driven weightings vs expert-suggested levels")
+fig.suptitle("MCMC weightings vs expert-suggested levels across qn types")
 ax.legend()
+ax.set_xlabel("Qn Level")
+ax.set_ylabel("MCMC Dwelltime")
 # plt.tight_layout()
 plt.show()

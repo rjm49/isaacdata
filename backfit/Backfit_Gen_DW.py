@@ -24,7 +24,7 @@ from utils.utils import extract_runs_w_timestamp
 QENC_QUAL=False
 QENC_DIFF=False
 qenc_width = 33
-n_classes = 2
+n_classes = 3
 
 FEAT_F33 = "F33"
 
@@ -33,51 +33,25 @@ max_runs = None #10000
 percTest = 0.20
 
 predictors = [
-           DummyClassifier(strategy="stratified"),
-             DummyClassifier(strategy="uniform"),
-            BernoulliNB(),
-              #SGDClassifier(max_iter=1000, tol=1e-3, n_jobs=-1, class_weight="balanced"),
-            #SVC(max_iter=100, class_weight='balanced'),
-            #SVC(max_iter=10000, kernel="linear", class_weight='balanced'),
-              LinearSVC(max_iter=100, class_weight="balanced"),
-              # PassiveAggressiveClassifier(class_weight="balanced", max_iter=1000, tol=1e-3, n_jobs=-1),
-             MLPClassifier(max_iter=100, nesterovs_momentum=True, early_stopping=True), #, activation="logistic"),
-              #Perceptron(max_iter=1000),
-            #GaussianNB(),
-            LogisticRegression(class_weight='balanced', n_jobs=-1),
-#             OneClassSVM()numpy
+    # DummyClassifier(strategy="stratified"),
+    # DummyClassifier(strategy="uniform"),
+    # BernoulliNB(),
+    LinearSVC(max_iter=100, class_weight="balanced"),
+    MLPClassifier(max_iter=100, nesterovs_momentum=True, early_stopping=True), #, activation="logistic"),
+    LogisticRegression(class_weight='balanced'),
+    # GaussianNB(),
 ]
 
 predictor_params = [
-                    None,
-                    None,
-                    {'n_iter':50, 'alpha': numpy.logspace(-3, 2) },
-                    #{'n_iter':250,'C': numpy.logspace(-3, 2), 'gamma': numpy.logspace(-3, 2)},
-#                     {'n_iter':50,'C': numpy.logspace(-3, 2), 'gamma': numpy.logspace(-3, 2)},
-                     {'n_iter':50,'C': numpy.logspace(-3, 2)},
-#                             None,
-#                     {'n_iter':200,'activation':['relu'], 'hidden_layer_sizes':[(100,),(100,50),(50,),(20,),(10,)], 'learning_rate_init':[0.001, 0.01, 0.1], 'alpha': numpy.logspace(-6,-1) },
-                    {'n_iter':250,'hidden_layer_sizes':[(100,), (66,10)], 'learning_rate_init':[0.001, 0.01, 0.1], 'alpha': numpy.logspace(-6,2) },
-                      # None,
-#                         None,
-                        {'n_iter':50,'C': numpy.logspace(-3, 2)},
-                        #  None,
-                    ]
+    # None,
+    # None,
+    # {'n_iter':50, 'alpha': numpy.logspace(-3, 2) },
+    {'n_iter':50,'C': numpy.logspace(-3, 2)},
+    {'n_iter':125,'hidden_layer_sizes':[(100,), (66,10)], 'learning_rate_init':[0.001, 0.01, 0.1], 'alpha': numpy.logspace(-6,2) },
+    {'n_iter':50,'C': numpy.logspace(-3, 2)},
+    # None,
+]
 
-# def get_qenc(catix, passrate, stretch, lev, mcmc, mode=None):
-#     qenc = numpy.zeros(shape=qenc_width)
-#     #qenc[:] = 0.0 #reset question encoding
-#     weight = 1.0
-#     if mode== DW_NATTS or mode==DW_STRETCH:
-#         weight = stretch
-#     elif mode==DW_PASSRATE:
-#         weight = passrate
-#     elif mode==DW_LEVEL:
-#         weight = lev
-#     elif mode==DW_MCMC:
-#         weight = mcmc
-#     qenc[catix]=weight # set the next q category and diff
-#     return qenc
 
 def generate_run_files(alpha, _featureset_to_use, _w, fade, cats, cat_lookup, all_qids, users, stretches, passrates, passquals, levels, mcmcdiffs, cat_ixs):
     stem = _featureset_to_use+"_"+str(alpha) + "_" + str(fade) + "_" + _w
@@ -116,10 +90,10 @@ def generate_run_files(alpha, _featureset_to_use, _w, fade, cats, cat_lookup, al
             ts, q, n_atts, n_pass = run
             qt = q.replace("|","~")
             lev = levels[qt]
-            if lev<2:
+            if lev<1:
                 continue
 
-            qdiff = calc_qdiff(qt, passrates, stretches, levels, mcmcdiffs, mode=_w)
+            # qdiff = calc_qdiff(qt, passrates, stretches, levels, mcmcdiffs, mode=_w)
 
             catix = cat_ixs[ cat_lookup[qt] ]
 
@@ -143,7 +117,7 @@ def generate_run_files(alpha, _featureset_to_use, _w, fade, cats, cat_lookup, al
             elif _w == DW_PASSRATE:
                 q_weight = passrate
             elif _w == DW_LEVEL:
-                q_weight = lev
+                q_weight = 1+lev
             elif _w == DW_MCMC:
                 q_weight = mcmc
             qenc[catix] = q_weight  # set the next q category and diff
@@ -165,25 +139,19 @@ def generate_run_files(alpha, _featureset_to_use, _w, fade, cats, cat_lookup, al
             elif _w == DW_MCMC:
                 a_weight = mcmc / n_atts
             elif _w == DW_LEVEL:
-                a_weight = lev / n_atts
+                a_weight = (1+lev) / n_atts
 
             if (n_pass>0):
                 if n_classes==2:
                     y = 0
                 else:
                     y = (-1 if n_atts==1 else 0)
-                X[catix] = 1 #(1.0-alpha)*X[catix] + alpha*upd
+                X[catix] = (1.0-alpha)*X[catix] + alpha*a_weight
             else:
                 y = 1
                 #X[catix] = 0
                 #X[catix] = retain*X[catix] -(1-retain)*upd
 
-                #print("in",catix,"put diff",(qdiff/n_atts))
-                # if retain < 0:
-                # else:
-                #     X[catix] += qdiff / n_atts
-            # else:
-            #     X[catix] = - mcmc / n_atts
             y_file.write(str(y)+"\n")
 
         X_file.flush()
@@ -223,9 +191,9 @@ if __name__ == '__main__':
     report_name = "report_DW{}_{}_fb{}_opt{}_scale{}_{}.txt".format(0, n_users, str(1 if force_balanced_classes else 0), ("001" if optimise_predictors else "0"), ("1" if do_scaling else "0"), featureset_to_use)
     if do_test:
         report = open(report_name,"w")
-    for w in [DW_BINARY]: #, DW_NO_WEIGHT, DW_NATTS]: #, DW_LEVEL, DW_PASSRATE, DW_MCMC, DW_STRETCH]:
-        for alpha in [1.0]:
-            for phi_retain in [1.0]:
+    for w in [DW_NO_WEIGHT, DW_NATTS, DW_LEVEL, DW_PASSRATE, DW_MCMC, DW_STRETCH]:
+        for alpha in [1.0, 0.9, 0.6, 0.3, 0.1]:
+            for phi_retain in [1.0, 0.75, 0.25, 0.0]:
                 print(cat_ixs)
                 if do_test:
                     print("testing")

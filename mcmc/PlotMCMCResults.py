@@ -115,7 +115,7 @@ cats, cat_lookup, all_qids, users, _stretches_, levels, cat_ixs = init_objects(n
 passdiffs, stretches, passquals, all_qids = load_new_diffs()
 df = pandas.read_csv("mcmc_results.csv", header=None, index_col=None)
 print(df.shape)
-df = df[df[LEVEL_IX]>0] # get rid of levels of 0 or less
+df = df[df[LEVEL_IX]>1] # get rid of levels of 0 or less
 print(df.shape)
 qmode_df = pandas.read_csv("../atypes.csv", header=None, index_col=None)
 print(qmode_df.shape)
@@ -127,7 +127,13 @@ for ix, filter in enumerate(filters): # ["ALL", "choice", "quantity", "symbol"]:
     #print(non_mcs)
     #print(pandas.unique(non_mcs))
     #print(non_mcs.size)
-    nw = df[ df[0].isin(non_mcs) ]
+    nw = df.loc[(df.loc[:,0]).isin(non_mcs), :]
+    nw.iloc[:,1] -= 1.0
+    print(nw)
+
+    print(numpy.max(nw[1]))
+    print(numpy.min(nw[1]))
+
     if nw.shape[0]==0:
         continue
     print(filter,"-> nw shape", nw.shape[0])

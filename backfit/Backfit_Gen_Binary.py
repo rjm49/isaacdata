@@ -31,26 +31,26 @@ n_classes = 2
 
 n_users = 1000
 max_runs = None
-percTest = 0.20
+percTest = 0.10
 
 predictors = [
-    DummyClassifier(strategy="stratified"),
-    DummyClassifier(strategy="uniform"),
-    BernoulliNB(),
+    # DummyClassifier(strategy="stratified"),
+    # DummyClassifier(strategy="uniform"),
+    # BernoulliNB(),
     LinearSVC(max_iter=100, class_weight="balanced"),
     MLPClassifier(max_iter=100, nesterovs_momentum=True, early_stopping=True), #, activation="logistic"),
     LogisticRegression(class_weight='balanced'),
-    GaussianNB(),
+    # GaussianNB(),
 ]
 
 predictor_params = [
-    None,
-    None,
-    {'n_iter':50, 'alpha': numpy.logspace(-3, 2) },
+    # None,
+    # None,
+    # {'n_iter':50, 'alpha': numpy.logspace(-3, 2) },
     {'n_iter':50,'C': numpy.logspace(-3, 2)},
     {'n_iter':250,'hidden_layer_sizes':[(100,), (66,10)], 'learning_rate_init':[0.001, 0.01, 0.1], 'alpha': numpy.logspace(-6,2) },
     {'n_iter':50,'C': numpy.logspace(-3, 2)},
-    None,
+    # None,
 ]
 
 
@@ -118,7 +118,7 @@ if __name__ == '__main__':
     else:
         do_test = True
 
-    n_classes = 2
+    n_classes = 3
     force_balanced_classes = False
     do_scaling = True
     optimise_predictors = True
@@ -129,7 +129,7 @@ if __name__ == '__main__':
     mcmc_diffs = load_mcmc_diffs()
 
     reports =[]
-    report_name = "report_DW{}_{}_fb{}_opt{}_scale{}_{}.txt".format(0, n_users, str(1 if force_balanced_classes else 0), ("001" if optimise_predictors else "0"), ("1" if do_scaling else "0"), "BW33")
+    report_name = "report_DW{}_{}_fb{}_opt{}_scale{}_{}.csv".format(0, n_users, str(1 if force_balanced_classes else 0), ("001" if optimise_predictors else "0"), ("1" if do_scaling else "0"), "BW33")
     if do_test:
         report = open(report_name,"w")
     jobs = []

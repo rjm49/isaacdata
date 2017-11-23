@@ -23,7 +23,7 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
     all_y = numpy.loadtxt(y_filename, delimiter=",")
 
     print("loaded X and y files")
-    
+
     if numpy.isnan(all_X.any()):
         print("nan in", x_filename)
         exit()
@@ -35,8 +35,8 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
     #print("selecting balanced subsample")
     print("t t split")
     X_train, X_test, y_train, y_test = train_test_split(all_X, all_y, test_size=percTest, random_state=666)
-    
-    
+
+
     scaler = StandardScaler()
     if do_scaling:
         X_train = scaler.fit_transform(X_train)
@@ -46,8 +46,10 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
     if(force_balanced_classes):
         X_train, y_train = balanced_subsample(X_train, y_train, 1.0) #0.118)
 
+
     print("X_train shape:", X_train.shape)
     print("X_test shape:", X_test.shape)
+
 
     print("tuning classifier ...")
     for ix,p in enumerate(predictors):
@@ -58,7 +60,7 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
         else:
             pbest = p.fit(X_train, y_train)
         predictors[ix] = pbest
-    
+
     print("pickling classifier ...")
     for ix,p in enumerate(predictors): #in predictors.items():
         with open('./pred{}.pkl'.format(ix), 'wb') as output:
@@ -66,15 +68,11 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
     print("done!")
 
 
-    report.write("* ** *** |\| \` | |  |) /; `|` / |_| *** ** *\n")
-    report.write("* ** *** | | /_ |^|  |) ||  |  \ | | *** ** *\n")
-    report.write("runs="+str(all_X.shape[0])+"\n")
-
+    # report.write("* ** *** |\| \` | |  |) /; `|` / |_| *** ** *\n")
+    # report.write("* ** *** | | /_ |^|  |) ||  |  \ | | *** ** *\n")
+    #report.write("RUNS,P,FB,WGT,ALPHA,PHI,SCL,0p,0r,0F,0supp,1p,1r,1F,1supp,avg_p,avg_r,avg_F,#samples\n")
     for ix,p in enumerate(predictors):
-        report.write(str(p).replace(",",";")+"\n")
-
-        report.write("FB,WGT,ALPHA,PHI,SCL\n")
-        report.write(",".join(map(str, (force_balanced_classes, diff_weighting, alpha, fade, do_scaling))) + "\n")
+        report.write(",".join(map(str, (all_X.shape[0], str(p).replace(",",";").replace("\n",""), force_balanced_classes, diff_weighting, alpha, fade, do_scaling))))
 
         y_pred_tr = p.predict(X_train)
         y_pred = p.predict(X_test)
@@ -84,10 +82,10 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
         # F = f1_score(y_test, y_pred, average=None, labels=classes)
         p,r,F,s = precision_recall_fscore_support(y_test, y_pred, labels=classes, average=None, warn_for=('precision', 'recall', 'f-score'))
         avp, avr, avF, _ = precision_recall_fscore_support(y_test, y_pred, labels=classes, average='weighted',
-                                                     warn_for=('precision', 'recall', 'f-score'))
+                                                           warn_for=('precision', 'recall', 'f-score'))
         for ix,c in enumerate(classes):
-            report.write("{},{},{},{},{}\n".format(c,p[ix],r[ix],F[ix],s[ix]))
-        report.write("avg,{},{},{},{}\n".format(avp, avr, avF, numpy.sum(s)))
+            report.write(",{},{},{},{},{},".format(c,p[ix],r[ix],F[ix],s[ix]))
+        report.write("{},{},{},{}\n".format(avp, avr, avF, numpy.sum(s)))
 
         # report.write(classification_report(y_test, y_pred)+"\n")
         # report.write("------END OF CLASSIFIER------\n")
