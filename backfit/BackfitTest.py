@@ -18,7 +18,7 @@ from sklearn.preprocessing.data import StandardScaler
 from utils.utils import balanced_subsample
 
 
-def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, n_users, percTest, featureset_to_use, diff_weighting, fade, force_balanced_classes, do_scaling, optimise_predictors, report):
+def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, n_users, percTest, featureset_to_use, diff_weighting, phi, force_balanced_classes, do_scaling, optimise_predictors, report):
     all_X = numpy.loadtxt(x_filename, delimiter=",")
     all_y = numpy.loadtxt(y_filename, delimiter=",")
 
@@ -62,8 +62,9 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
         predictors[ix] = pbest
 
     print("pickling classifier ...")
-    for ix,p in enumerate(predictors): #in predictors.items():
-        with open('./pred{}.pkl'.format(ix), 'wb') as output:
+    for ix,p in enumerate(predictors):
+        p_name = predictor_params[ix]['name']
+        with open('./p_{}_{}_{}.pkl'.format(p_name, alpha, phi), 'wb') as output:
             pickle.dump(p, output, pickle.HIGHEST_PROTOCOL)
     print("done!")
 
@@ -72,7 +73,7 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
     # report.write("* ** *** | | /_ |^|  |) ||  |  \ | | *** ** *\n")
     #report.write("RUNS,P,FB,WGT,ALPHA,PHI,SCL,0p,0r,0F,0supp,1p,1r,1F,1supp,avg_p,avg_r,avg_F,#samples\n")
     for ix,p in enumerate(predictors):
-        report.write(",".join(map(str, (all_X.shape[0], str(p).replace(",",";").replace("\n",""), force_balanced_classes, diff_weighting, alpha, fade, do_scaling))))
+        report.write(",".join(map(str, (all_X.shape[0], str(p).replace(",",";").replace("\n",""), force_balanced_classes, diff_weighting, alpha, phi, do_scaling))))
 
         y_pred_tr = p.predict(X_train)
         y_pred = p.predict(X_test)

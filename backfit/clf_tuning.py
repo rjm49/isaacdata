@@ -27,6 +27,7 @@ def run_random_search(clf, X, y, param_dist):
     #del param_dist['n_iter']
     pcopy = copy.copy(param_dist)
     del pcopy['n_iter']
+    del pcopy['name']
     random_search = RandomizedSearchCV(clf, param_distributions=pcopy,
                                    n_iter=n_iter_search, n_jobs=-1)
 
