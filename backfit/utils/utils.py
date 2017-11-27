@@ -148,11 +148,11 @@ def wilson_score(ns,n):
     print(wilsonU,wilsonL)
     return (wilsonU - wilsonL)
 
-def load_new_diffs():
+def load_new_diffs(_file="../pass_diffs.csv"):
     passdiffs = {}
     passquals = {}
     stretches = {}
-    diff_df = pd.read_csv("../pass_diffs.csv", header=None)
+    diff_df = pd.read_csv(_file, header=None)
     for dr in diff_df.iterrows():
         data = dr[1]
         qt = data[0].replace("|","~")
@@ -162,8 +162,8 @@ def load_new_diffs():
     all_qids = passdiffs.keys()
     return passdiffs, stretches, passquals, all_qids
 
-def load_mcmc_diffs():
-    diff_df = pd.read_csv("../mcmc/mcmc_results.csv", header=None)
+def load_mcmc_diffs(_file="../mcmc/mcmc_results.csv"):
+    diff_df = pd.read_csv(_file, header=None)
     mcmcdiffs = {}
     for dr in diff_df.iterrows():
         data = dr[1]

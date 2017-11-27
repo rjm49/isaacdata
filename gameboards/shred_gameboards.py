@@ -1,3 +1,4 @@
+import codecs
 import os, sys
 
 import pandas
@@ -55,13 +56,13 @@ def levenshtein(a, b):
 if __name__ == '__main__':
 
     cats, cat_lookup, all_qids, users, _stretches_, levels, cat_ixs = init_objects(n_users, seed=666)
-    boards = pandas.read_csv("gameboards.txt", sep="~", header=0, index_col=None)
+    boards = pandas.read_csv("gameboards.txt", sep="~", header=0, index_col=None)[0:5000]
     groups = pandas.read_csv("groups.txt", sep=",", header=0, index_col=None)# gameboard_id	user_id	group_id	assignment_id
 
     passdiffs, stretches, passquals, all_qids = load_new_diffs()
     mcmcdiffs = load_mcmc_diffs()
 
-    shredfile = open("shredded.csv", "w")
+    shredfile = codecs.open("shredded.csv", "w", "utf-8")
 
     tbc = 0
     bc = 0
