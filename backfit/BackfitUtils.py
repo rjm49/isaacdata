@@ -11,12 +11,10 @@ from collections import OrderedDict
 import random
 import os
 
-def init_objects(n_users, seed=None):
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    # print(dir_path)
-    qmeta = pd.read_csv(dir_path+"/../qmeta.csv", header=None)
+def init_objects(n_users, path="../", seed=None):
+    qmeta = pd.read_csv(path+"qmeta.csv", header=None)
     #print(qmeta)
-    users = open(dir_path+"/../users.csv").read().splitlines()
+    users = open(path+"users.csv").read().splitlines()
     users = [u for u in users if u.isnumeric()]
     
     random.seed(seed)

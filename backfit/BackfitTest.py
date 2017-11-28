@@ -41,6 +41,8 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
     if do_scaling:
         X_train = scaler.fit_transform(X_train)
         X_test = scaler.transform(X_test)
+        with open('./qutor_scaler.pkl', 'wb') as output:
+            pickle.dump(scaler, output, pickle.HIGHEST_PROTOCOL)
 
     classes = numpy.unique(y_train)
     if(force_balanced_classes):
