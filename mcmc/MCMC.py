@@ -17,9 +17,10 @@ if __name__ == '__main__':
     print("kickoff for n_users?",n_users)
 
     observed_qids = []
+    success_qids = []
     failed_qids = []
 
-    usersf = open("mcmc_users.txt","w")
+    usersf = open("sf_mcmc_users.txt","w")
 
     for u in users:
         print("user = ", u)
@@ -29,9 +30,12 @@ if __name__ == '__main__':
         for run in runs:
             ts, q, n_atts, n_pass = run
             q = q.replace("|","~")
+            if q not in observed_qids:
+                observed_qids.append(q)
+            # now do pass/fail specific records
             if n_pass>0:
-                if q not in observed_qids:
-                    observed_qids.append(q)
+                if q not in success_qids:
+                    success_qids.append(q)
             else:
                 if q not in failed_qids:
                     failed_qids.append(q)
@@ -39,18 +43,21 @@ if __name__ == '__main__':
 
     usersf.close()
     òbserved_qids = ["ROOT"] + observed_qids
+
     with open("obsqs.txt","w") as qf:
         qf.write("\n".join(observed_qids))
-
     with open("failqs.txt","w") as ff:
         ff.write("\n".join(failed_qids))
+    with open("succqs.txt","w") as sf:
+        sf.write("\n".join(success_qids))
 
     n_qids = len(observed_qids)
+    n_sqids = len(success_qids)
     n_fqids = len(failed_qids)
-    X = numpy.zeros(shape=(n_qids, n_qids))  # init'se a new feature vector w same width as all_X
 
-    #F=None
-    F = numpy.zeros(shape=(n_qids, n_fqids)) #failure matrix
+    X = numpy.zeros(shape=(n_qids, n_qids)) # transition matrix (joint)
+    S = numpy.zeros(shape=(n_qids, n_qids)) # success matrix
+    F = numpy.zeros(shape=(n_qids, n_qids))  # failure matrix
 
     for u in users:
         print("user = ", u)
@@ -60,55 +67,82 @@ if __name__ == '__main__':
         for run in runs:
             ts, q, n_atts, n_pass = run
             q = q.replace("|","~")
-            if n_pass>0:
-                qix = observed_qids.index(q)
-                X[curr_qix, qix] = X[curr_qix, qix]+1
-                curr_qix = qix
-            else: #register failed attempts here
-                if F is not None:
-                    qix = failed_qids.index(q)
-                    F[curr_qix, qix] = F[curr_qix, qix]+1
+            qix = observed_qids.index(q)
+            X[curr_qix, qix] = X[curr_qix, qix] + 1
+            if n_pass>0: #register successful attempt
+                S[curr_qix, qix] = S[curr_qix, qix]+1
+            else: #register failed attempt
+                F[curr_qix, qix] = F[curr_qix, qix]+1
+            curr_qix = qix
 
-
-    #Numpy divide each row in X by its sum to normalise to probabilties
+    # #Numpy divide each row in X by its sum to normalise to probabilties
+    # # print(X.shape)
+    # # X = X[numpy.any(X!=0, axis=0)]
     # print(X.shape)
-    # X = X[numpy.any(X!=0, axis=0)]
-    print(X.shape)
-    X = X / X.sum(axis=1, keepdims=True)
-    X = numpy.nan_to_num(X)
-    numpy.savetxt("X.csv", X, delimiter=",")
-
-    if F is not None:
-        #F = F/F.sum(axis=1, keepdims=True)
-        F = numpy.nan_to_num(F)
-        numpy.savetxt("F.csv", F, delimiter=",")
+    # X = X / X.sum(axis=1, keepdims=True)
+    # X = numpy.nan_to_num(X)
+    # numpy.savetxt("X.csv", X, delimiter=",")
+    #
+    # if F is not None:
+    #     #F = F/F.sum(axis=1, keepdims=True)
+    #     F = numpy.nan_to_num(F)
+    numpy.savetxt("S.csv", S, delimiter=",")
+    numpy.savetxt("F.csv", F, delimiter=",")
 
     q_cnt = numpy.zeros(shape=n_qids)
+    s_cnt = numpy.zeros(shape=n_qids)
+    f_cnt = numpy.zeros(shape=n_qids)
     i=0
     qix = 0
+    seen=set()
+    eps_cnt=0
     while i < n_steps:
-        q_cnt[qix] += 1
-        rowsum = numpy.sum(X[qix])
+        rowsum = numpy.sum(S[qix]) + numpy.sum(F[qix])
         if(rowsum==0): #if we've hit a dead end...
             print("dead end")
             qix = 0 #reset the random walk
             i+=1
+            eps_cnt+=1
+            seen = set()
             continue
         #else choose from possible next nodes weighted by probability
         ixs = []
         probs = []
-        for ix, prob in enumerate(X[qix]):
-            ixs.append(ix)
-            probs.append(prob)
-        # print(qix)
-        next_qix = numpy.random.choice( ixs, p = probs )
-        qix = next_qix
+        tagd_S = [ (nx,pr/rowsum,"S") for nx,pr in enumerate(S[qix]) ]
+        tagd_F = [ (nx,pr/rowsum,"F") for nx,pr in enumerate(F[qix]) ]
+        all_mvs = tagd_S+tagd_F
+        all_mv_ixs = [ ix for ix,_ in enumerate(all_mvs) ]
+        probs = [m[1] for m in all_mvs]
+        next_mv_ix = numpy.random.choice( all_mv_ixs, p = probs )
+        next_move = all_mvs[next_mv_ix]
+        qix = next_move[0]
+        if qix in seen:
+            print("seen")
+            qix=0
+            i+=1
+            seen = set()
+            eps_cnt+=1
+            continue
+        seen.add(qix)
+        print("new qix=",qix)
+        SorF = next_move[2]
+        #Now tally up the counts
+        q_cnt[qix] +=1
+        if(SorF=="S"):
+            s_cnt[qix] +=1
+        else:
+            f_cnt[qix] +=1
         i+=1
+    eps_cnt += 1
+    print("#episodes=", eps_cnt)
+    print("avg ep len=", (i/float(eps_cnt)))
 
     # q_cnt = q_cnt / n_steps # convert to probabilties
 
-    fout = open("mcmc_results.csv", "w")
+
+
+    fout = open("sf_mcmc_results.csv", "w")
     for qix, qid in enumerate(observed_qids):
         # fout.write(str(qid) +","+ str(q_cnt[qix])+"\n")
-        fout.write(",".join(map(str,( qid, levels[qid], q_cnt[qix], passdiffs[qid], stretches[qid], passquals[qid] )))+"\n")
+        fout.write(",".join(map(str,( qid, levels[qid], q_cnt[qix],s_cnt[qix],f_cnt[qix], passdiffs[qid], stretches[qid], passquals[qid] )))+"\n")
     fout.close()
