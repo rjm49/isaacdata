@@ -96,46 +96,60 @@ if __name__ == '__main__':
     qix = 0
     seen=set()
     eps_cnt=0
+    loop_cnt=0
+    dead_cnt=0
     while i < n_steps:
+        if (i % 1000)==0:
+            print(i,"eps")
+
         rowsum = numpy.sum(S[qix]) + numpy.sum(F[qix])
         if(rowsum==0): #if we've hit a dead end...
-            print("dead end")
+            # print("dead end")
             qix = 0 #reset the random walk
             i+=1
             eps_cnt+=1
+            dead_cnt+=1
             seen = set()
             continue
         #else choose from possible next nodes weighted by probability
-        ixs = []
-        probs = []
-        tagd_S = [ (nx,pr/rowsum,"S") for nx,pr in enumerate(S[qix]) ]
-        tagd_F = [ (nx,pr/rowsum,"F") for nx,pr in enumerate(F[qix]) ]
-        all_mvs = tagd_S+tagd_F
-        all_mv_ixs = [ ix for ix,_ in enumerate(all_mvs) ]
-        probs = [m[1] for m in all_mvs]
-        next_mv_ix = numpy.random.choice( all_mv_ixs, p = probs )
-        next_move = all_mvs[next_mv_ix]
-        qix = next_move[0]
-        if qix in seen:
-            print("seen")
-            qix=0
-            i+=1
+        # ixs = []
+        # probs = []
+        # tagd_S = [ (nx,pr/rowsum,"S") for nx,pr in enumerate(S[qix]) ]
+        # tagd_F = [ (nx,pr/rowsum,"F") for nx,pr in enumerate(F[qix]) ]
+        # all_mvs = tagd_S+tagd_F
+        # all_mv_ixs = [ ix for ix,_ in enumerate(all_mvs) ]
+
+        Slen = S[qix].shape[0]
+        #print("Slen",Slen)
+        all_mvs = numpy.append(S[qix],F[qix]) / rowsum
+        #print(all_mvs)
+        all_mv_ixs = numpy.arange(len(all_mvs))
+        next_mv_ix = numpy.random.choice( all_mv_ixs, p = all_mvs )
+
+        if next_mv_ix in seen:
+            # print("seen")
+            qix = 0
+            i += 1
             seen = set()
-            eps_cnt+=1
+            loop_cnt += 1
+            eps_cnt += 1
             continue
-        seen.add(qix)
-        print("new qix=",qix)
-        SorF = next_move[2]
-        #Now tally up the counts
-        q_cnt[qix] +=1
-        if(SorF=="S"):
-            s_cnt[qix] +=1
-        else:
-            f_cnt[qix] +=1
+        seen.add(next_mv_ix)
+
+        if next_mv_ix < Slen: #success!
+            qix = next_mv_ix
+            #ForS = "S"
+            s_cnt[qix] += 1
+        else: #failure :(
+            qix = next_mv_ix - Slen # failure transition indices are offset by Slen...
+            #ForS = "F"
+            f_cnt[qix] += 1
         i+=1
     eps_cnt += 1
     print("#episodes=", eps_cnt)
     print("avg ep len=", (i/float(eps_cnt)))
+    print("truncated loops=", loop_cnt)
+    print("dead ends=", dead_cnt)
 
     # q_cnt = q_cnt / n_steps # convert to probabilties
 

@@ -11,7 +11,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from backfit.clf_tuning import run_random_search
 
 from sklearn.metrics.classification import classification_report, accuracy_score, f1_score, recall_score, \
-    precision_score, precision_recall_fscore_support
+    precision_score, precision_recall_fscore_support, confusion_matrix
 from sklearn.model_selection._split import train_test_split
 from sklearn.preprocessing.data import StandardScaler
 
@@ -70,16 +70,21 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
             pickle.dump(p, output, pickle.HIGHEST_PROTOCOL)
     print("done!")
 
+    confrep = open("confusion.txt", "w")
 
     # report.write("* ** *** |\| \` | |  |) /; `|` / |_| *** ** *\n")
     # report.write("* ** *** | | /_ |^|  |) ||  |  \ | | *** ** *\n")
     #report.write("RUNS,P,FB,WGT,ALPHA,PHI,SCL,0p,0r,0F,0supp,1p,1r,1F,1supp,avg_p,avg_r,avg_F,#samples\n")
     for ix,p in enumerate(predictors):
+
         report.write(",".join(map(str, (all_X.shape[0], str(p).replace(",",";").replace("\n",""), force_balanced_classes, diff_weighting, alpha, phi, do_scaling))))
 
         y_pred_tr = p.predict(X_train)
         y_pred = p.predict(X_test)
 
+        confrep.write(str(p).replace(",",";").replace("\n","")+"\n")
+        confrep.write(str(alpha) +","+ str(phi)+"\n")
+        confrep.write(str(confusion_matrix(y_test,y_pred))+"\n")
         # p = precision_score(y_test, y_pred, average=None, labels=classes)
         # r = recall_score(y_test, y_pred, average=None, labels=classes)
         # F = f1_score(y_test, y_pred, average=None, labels=classes)
@@ -93,5 +98,6 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
         # report.write(classification_report(y_test, y_pred)+"\n")
         # report.write("------END OF CLASSIFIER------\n")
         report.flush()
+    confrep.close()
 
     return X_train, X_test, y_pred_tr, y_pred, y_test, scaler
