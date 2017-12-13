@@ -61,9 +61,6 @@ if __name__ == '__main__':
     print("avg ep len=", (xp/float(eps_cnt)))
 
     # q_cnt = q_cnt / n_steps # convert to probabilties
-
-
-
     fout = open("dir_mcmc_results.csv", "w")
     fout.write("QID,LV,RUNS,SX,FX,PRATE,FRATE,SSTR,FSTR,wilson,XP,S_XP,F_XP,XP/RUN,XP/S,XP/F\n")
     for qix, qid in enumerate(all_qids):

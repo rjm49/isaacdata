@@ -162,6 +162,13 @@ def load_new_diffs(_file="../pass_diffs.csv"):
     all_qids = passdiffs.keys()
     return passdiffs, stretches, passquals, all_qids
 
+
+def load_atypes(_file="../new_atypes.csv"):
+    df = pd.read_csv(_file, header=None, index_col=0)
+    colz = ["level", "subject", "field", "topic", "atype", "med_n_atts", "med_n_pass", "med_passrate", "mean_passrate"]
+    df.columns = colz
+    return df
+
 def load_mcmc_diffs(_file="../mcmc/mcmc_results.csv"):
     diff_df = pd.read_csv(_file, header=None)
     mcmcdiffs = {}

@@ -50,8 +50,40 @@ def extract_runs_w_timestamp(attempts):
     return uni[1:] #lose the first entry, which is a dummy
 
 
-def balanced_subsample(x,y,subsample_size=1.0):
+def balanced_supersample(x,y, _prop_of_max=1.0):
+    class_xs = []
+    max_elems = None
+    for yi in np.unique(y):
+        elems = x[(y == yi)]
+        class_xs.append((yi, elems))
+        if max_elems == None or elems.shape[0] > max_elems:
+            max_elems = elems.shape[0]
+            print("max elemens class is {} with {} members".format(yi, max_elems))
+    use_elems = max_elems
+    xs = []
+    ys = []
 
+    for ci,this_xs in class_xs:
+        x_ = np.copy(this_xs)
+        ix_ = np.arange(len(this_xs))
+        target = int(_prop_of_max * use_elems)
+        n_to_fill = max(len(this_xs),target) - len(this_xs)
+        if n_to_fill > 0:
+            rix = np.random.choice(ix_, n_to_fill) #choose random indices
+            newels = x_[rix] #lookup elements by index
+            x_ = np.vstack((x_, newels)) #append elements
+
+        y_ = np.empty(len(this_xs)+n_to_fill)
+        y_.fill(ci)
+
+        xs.append(x_)
+        ys.append(y_)
+
+    xs = np.concatenate(xs)
+    ys = np.concatenate(ys)
+    return xs,ys
+
+def balanced_subsample(x,y,subsample_size=1.0):
     class_xs = []
     min_elems = None
 

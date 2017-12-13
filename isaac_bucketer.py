@@ -62,8 +62,8 @@ if __name__ == '__main__':
                         ("subject",row0.subject),
                         ("field",row0.field),
                         ("topic",row0.topic),
-                        ("n_atts",0),
-                        ("n_pass",0),
+                        ("n_atts",[]),
+                        ("n_pass",[]),
                         ("answer_type",row0.answer_type)
                     ])
                         # if write_main:
@@ -75,23 +75,37 @@ if __name__ == '__main__':
                 #         print("reopening",fhandles[q_id].name)
                 #         fhandles[q_id] = open(fhandles[q_id].name,"w+")
 
-                for row in list(rows.itertuples()):
-                    users.add(row.user_id) # each user added once bc Set 
-                    qmeta[q_id]["n_atts"]+=1
-                    if row.correct:
-                        qmeta[q_id]["n_pass"]+=1
-                        # if write_main:
-                        #     fhandles[q_id].write(str(row.timestamp) +","+ str(row.correct)+","+str(row.user_id)+"\n")
-                        # if write_main:
-                        #     for handle in fhandles.values():
-                        #         handle.close()
+                qusers  = pd.unique(rows["user_id"])
+
+                for u in qusers:
+                    natts = rows[rows.user_id==u]
+                    npasz = natts[natts.correct==True]
+                    qmeta[q_id]["n_atts"].append(natts.shape[0])
+                    qmeta[q_id]["n_pass"].append(npasz.shape[0])
+                    users.add(u) # each user added once bc Set
 
     if write_atypes:
-        atypefile = open("atypes.csv","w")
+        atypefile = open("new_atypes.csv","w")
         for k in qmeta.keys():
             d = qmeta[k]
-            ratio = d["n_atts"]/numpy.float64(d["n_pass"])
-            atypefile.write(",".join([k.replace("|","~")]+[str(x) for x in d.values()]) +","+ str(ratio) +"\n")
+            n_atts = d["n_atts"]
+            n_pass = d["n_pass"]
+
+            del d["n_atts"]
+            del d["n_pass"]
+
+            median_atts = numpy.median(n_atts)
+            median_pass = numpy.median(n_pass)
+
+            mean_atts = numpy.mean(n_atts)
+            mean_pass = numpy.mean(n_pass)
+
+            pass_rates = numpy.divide(n_pass, n_atts)
+            median_passrate = numpy.median(pass_rates)
+            mean_passrate = numpy.mean(pass_rates)
+
+            # ratio = d["n_atts"]/numpy.float64(d["n_pass"])
+            atypefile.write(",".join([k.replace("|","~")]+[str(x) for x in d.values()]) +","+ str(median_atts) + "," + str(median_pass) +","+ str(median_passrate) + ","+ str(mean_passrate) +"\n")
         atypefile.close()
 
     if write_qmeta:
