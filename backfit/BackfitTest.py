@@ -60,7 +60,7 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
         # input(X_train.shape)
         X_train = scaler.fit_transform(X_train)
         X_test = scaler.transform(X_test)
-        with open('./qutor_scaler.pkl', 'wb') as output:
+        with open('../../../isaac_data_files/qutor_scaler.pkl', 'wb') as output:
             pickle.dump(scaler, output, pickle.HIGHEST_PROTOCOL)
 
     # print("feature reduction...")
@@ -90,7 +90,7 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
     print("pickling classifier ...")
     for ix,p in enumerate(predictors):
         p_name = predictor_params[ix]['name']
-        with open('./p_{}_{}_{}.pkl'.format(p_name, alpha, phi), 'wb') as output:
+        with open('../../../isaac_data_files/p_{}_{}_{}.pkl'.format(p_name, alpha, phi), 'wb') as output:
             pickle.dump(p, output, pickle.HIGHEST_PROTOCOL)
     print("done!")
 
