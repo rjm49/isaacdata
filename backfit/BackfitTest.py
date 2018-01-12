@@ -57,6 +57,7 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
 
     scaler = StandardScaler()
     if do_scaling:
+        # input(X_train.shape)
         X_train = scaler.fit_transform(X_train)
         X_test = scaler.transform(X_test)
         with open('./qutor_scaler.pkl', 'wb') as output:
@@ -71,7 +72,6 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
     sample_weights = None
     if(force_balanced_classes):
         X_train, y_train = balanced_subsample(X_train, y_train, 1.0) #0.118)
-        #X_train, y_train = resample(X_train, y_train)
 
     print("X_train shape:", X_train.shape)
     print("X_test shape:", X_test.shape)
@@ -103,6 +103,8 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
 
         y_pred_tr = p.predict(X_train)
         y_pred = p.predict(X_test)
+
+        # for x,y,yp in zip(X_train, y_test, y_pred):
 
         if conf_report:
             conf_report.write(str(p).replace(",",";").replace("\n","")+"\n")

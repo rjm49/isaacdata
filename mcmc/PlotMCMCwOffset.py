@@ -44,7 +44,6 @@ def plot_it(df, ax, filter_name, offs):
         mcmc_mns = numpy.append(mcmc_mns, m)
         mcmc_stds = numpy.append(mcmc_stds, std)
 
-
     q_levels = df[1]+offs
     l_offset = levels+offs
     mcmcs = df[MCMC_IX]

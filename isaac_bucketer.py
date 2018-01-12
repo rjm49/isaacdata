@@ -13,7 +13,7 @@ q_dict = {}
 q_counter = defaultdict(list)
 p_counter = defaultdict(list)
 q_id=None
-max_n = 100
+# max_n = 100
 
 def chunker(seq, size):
     return (seq[pos:pos + size] for pos in range(0, len(seq), size))
@@ -64,6 +64,7 @@ if __name__ == '__main__':
                         ("topic",row0.topic),
                         ("n_atts",[]),
                         ("n_pass",[]),
+                        ("stretch_values", []),
                         ("answer_type",row0.answer_type)
                     ])
                         # if write_main:
@@ -82,6 +83,9 @@ if __name__ == '__main__':
                     npasz = natts[natts.correct==True]
                     qmeta[q_id]["n_atts"].append(natts.shape[0])
                     qmeta[q_id]["n_pass"].append(npasz.shape[0])
+                    if npasz.shape[0] > 0:
+                        stretch = natts.shape[0] / npasz.shape[0]
+                        qmeta[q_id]["stretch_values"].append(stretch)
                     users.add(u) # each user added once bc Set
 
     if write_atypes:
@@ -90,22 +94,28 @@ if __name__ == '__main__':
             d = qmeta[k]
             n_atts = d["n_atts"]
             n_pass = d["n_pass"]
+            stretches = d["stretch_values"]
+
+            print("Str=",stretches)
 
             del d["n_atts"]
             del d["n_pass"]
+            del d["stretch_values"]
 
             median_atts = numpy.median(n_atts)
             median_pass = numpy.median(n_pass)
+            median_stretch = numpy.median(stretches)
 
             mean_atts = numpy.mean(n_atts)
             mean_pass = numpy.mean(n_pass)
+            mean_stretch = numpy.mean(stretches)
 
             pass_rates = numpy.divide(n_pass, n_atts)
             median_passrate = numpy.median(pass_rates)
             mean_passrate = numpy.mean(pass_rates)
 
             # ratio = d["n_atts"]/numpy.float64(d["n_pass"])
-            atypefile.write(",".join([k.replace("|","~")]+[str(x) for x in d.values()]) +","+ str(median_atts) + "," + str(median_pass) +","+ str(median_passrate) + ","+ str(mean_passrate) +"\n")
+            atypefile.write(",".join([k.replace("|","~")]+[str(x) for x in d.values()]) +","+ str(median_atts) + "," + str(median_pass) +","+ str(median_passrate) + ","+ str(mean_passrate) +","+ str(median_stretch)+","+str(mean_stretch)+"\n")
         atypefile.close()
 
     if write_qmeta:
