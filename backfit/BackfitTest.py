@@ -4,7 +4,9 @@ from sys import stderr
 import sys
 
 import numpy
+import pandas
 from sklearn import preprocessing
+from sklearn.cluster import FeatureAgglomeration
 from sklearn.decomposition import PCA
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.feature_selection import RFE
@@ -24,7 +26,8 @@ from utils.utils import balanced_subsample, balanced_supersample
 
 
 def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, n_users, percTest, featureset_to_use, diff_weighting, phi, force_balanced_classes, do_scaling, optimise_predictors, report, conf_report=None):
-    all_X = numpy.loadtxt(x_filename, delimiter=",")
+    # all_X = numpy.loadtxt(x_filename, delimiter=",")
+    all_X = numpy.load(x_filename+".npy")
     all_y = numpy.loadtxt(y_filename, delimiter=",")
 
     print("loaded X and y files", x_filename, y_filename)
@@ -56,12 +59,17 @@ def train_and_test(alpha, predictors, predictor_params, x_filename, y_filename, 
 
 
     scaler = StandardScaler()
+    rdim = FeatureAgglomeration(n_clusters=100)
     if do_scaling:
         # input(X_train.shape)
+        X_train = rdim.fit_transform(X_train)
+        X_test = rdim.transform(X_test)
         X_train = scaler.fit_transform(X_train)
         X_test = scaler.transform(X_test)
         with open('../../../isaac_data_files/qutor_scaler.pkl', 'wb') as output:
             pickle.dump(scaler, output, pickle.HIGHEST_PROTOCOL)
+        with open('../../../isaac_data_files/qutor_rdim.pkl', 'wb') as output:
+            pickle.dump(rdim, output, pickle.HIGHEST_PROTOCOL)
 
     # print("feature reduction...")
     # pc = PCA(n_components=100)

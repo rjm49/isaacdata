@@ -11,7 +11,7 @@ from collections import OrderedDict
 import random
 import os
 
-def init_objects(n_users, path="../", seed=None):
+def init_objects(n_users, path="../../../isaac_data_files", seed=None):
     qmeta = pd.read_csv(path+"qmeta.csv", header=None)
     #print(qmeta)
     users = open(path+"users.csv").read().splitlines()
