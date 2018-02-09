@@ -1,5 +1,7 @@
 import sklearn as sk
 
+from backfit.BackfitUtils import init_objects
+
 '''
 Created on 24 Aug 2017
 
@@ -42,100 +44,36 @@ create_xm = False
 plot = True
 if __name__ == '__main__':
 
+    base = "../../../isaac_data_files/"
+
     #build user experience matrix here....
-    qmeta = pandas.read_csv("../qmeta.csv", header=None)
-    users = open("../users.csv").read().splitlines()
-    shuffle(users, lambda: 0.666)
-    users = users[0:1000]
-    print(users)
-#     users = users[0:1000]
-    
+    qmeta = pandas.read_csv(base+"qmeta.csv", header=None)
+    n_users=1000
+    cats, cat_lookup, all_qids, users, diffs, levels, cat_ixs = init_objects(n_users, path=base)
+
     levels = set()
     lev_lookup = {}
     
-    SUB=3
-    FLD=4
-    TOP=5
-
-    cats = set()
-    cat_lookup = {}    
-    cat_ixs = {}
-    combo_ix=set()
-    
-    all_qids = set()
-    for line in qmeta.itertuples():
-        qid = line._1
-        all_qids.add(qid)
-        
-        cat = str(line[SUB])+"/"+str(line[FLD])+"/"+str(line[TOP])
-        cats.add(cat)
-        cat_lookup[qid]= cat
-        
-        lev= -1 if isnan(line._2) else int(line._2)
-        levels.add(lev)
-        lev_lookup[qid]=lev
-        
-#         c_L = str(lev) # + "_" + str(lev)
-        combo_ix.add(cat)
-        
-    for it in lev_lookup.items():   
-        print(it[0],"\t\t\t",it[1])
-
-    q_ixs={}
-    #all_qids = unique(all_qids)
-    for ix, q in enumerate(all_qids):
-        q_ixs[q]=ix
-
-    for ix, c in enumerate(cats):
-        cat_ixs[c]=ix
-        
     if create_xm:
-        
-        #exp_mx = pandas.DataFrame( index=all_qids, columns=exp_cols )#, columns = questions)
-        exp_mx = numpy.zeros(shape = (len(users), len(all_qids)))#, dtype=numpy.int32)
-        #cnt_mx = numpy.zeros(shape = (len(users), len(all_qids)), dtype=numpy.int32)
-        
+        exp_mx = numpy.zeros(shape = (len(users), len(all_qids)))
         print("Created exp_mx of shape:", exp_mx.shape)
         
-        #cnt_mx = pandas.DataFrame( index=users, columns=list(levels) )#, columns = questions)
-        
-        #exp_mx[:] = -1.0
-        #exp_mx = numpy.zeros((len(users),len(questions)))
-        #exp_mx.fillna(0.0, inplace=True)
-        #cnt_mx.fillna(0.0, inplace=True)
         for uix,u in enumerate(users):
-            X = numpy.zeros(shape=(1,len(all_qids)))#, dtype=numpy.int32)
-#             print(u,"...")
-            uqatts = pandas.read_csv("../by_user/{}.txt".format(u), header=None)
+            X = numpy.zeros(shape=(1,len(all_qids)))
+            uqatts = pandas.read_csv(base+"by_user/{}.txt".format(u), header=None)
             runs = extract_runs_w_timestamp(uqatts)
             
             for run in runs:
                 ts,q,n_atts,n_pass = run
                 q = q.replace("|","~")
-#                 L = lev_lookup[q]
                 c = cat_lookup[q]
-                #decay the user's previous career
                 exp_mx[uix] = decay * exp_mx[uix]
                 if(n_pass > 0):
-                    qix = q_ixs[q]
-#                     ix = cat_ixs[c]
-#                     print(numpy.sum(exp_mx[qix]))
-#                     print(numpy.sum(X))
+                    qix = all_qids.index(q)
                     exp_mx[uix, qix]=1.0
-                    #X[0,qix] = 1.0
-#                     exp_mx[uix] = numpy.logical_or(exp_mx[uix], X)
-                #exp_mx[uix] = exp_mx[uix] + X
-#                     print(numpy.sum(exp_mx[qix]))
-
             print(u,"done")
-#        exp_mx.fillna(0.0, inplace=True)
-        #print(exp_mx.shape)
-        
-#         exp_mx, all_qids = remove_zero_rc(exp_mx, all_qids)
-        print("new shape=", exp_mx.shape)
-        
-        #exp_mx.to_csv("exp_mx_all.csv")
-        numpy.savetxt("exp_mx_all.csv", exp_mx, delimiter=",")#, fmt="%i")
+
+        numpy.savetxt(base+"exp_mx_all.csv", exp_mx, delimiter=",")
         print("saved mx")
         
     if plot:
@@ -180,12 +118,13 @@ if __name__ == '__main__':
         print("number of zero-rows:",len(zrows))
 
         numpy.random.seed(666)
-        ixs = numpy.random.choice(X.shape[0], 1000, replace=False)
+        ixs = numpy.random.choice(users, 1000, replace=False)
         print(ixs)
         
         test_users = []
         for ix in ixs:
-            test_users.append( users[ix])
+            print(ix)
+            test_users.append( users[int(ix)])
         print(ixs)
         X = X[ixs, :]
 #         X = StandardScaler().fit_transform(X)

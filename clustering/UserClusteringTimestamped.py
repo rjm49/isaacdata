@@ -32,6 +32,7 @@ from math import isnan
 from collections import Counter, OrderedDict
 from utils.utils import extract_runs_w_timestamp
 
+filebase="../../../isaac_data_files/"
 decay = 0.999
 base = dateutil.parser.parse("2017-01-01 23:59:59")
 date_list = [base + datetime.timedelta(days=x) for x in [i*30 for i in range(0,5)]]
@@ -48,8 +49,8 @@ plot = True
 if __name__ == '__main__':
 
     #build user experience matrix here....
-    qmeta = pandas.read_csv("../qmeta.csv", header=None)
-    users = open("../users.csv").read().splitlines()
+    qmeta = pandas.read_csv(filebase+"qmeta.csv", header=None)
+    users = open(filebase+"users.csv").read().splitlines()
     shuffle(users, lambda: 0.666)
     users = users[0:1000]
     print(users)
@@ -110,7 +111,7 @@ if __name__ == '__main__':
             active_users = []
             active_user_lookup[target] = active_users
             for uix,u in enumerate(users):
-                uqatts = pandas.read_csv("../by_user/{}.txt".format(u), header=None)
+                uqatts = pandas.read_csv(filebase+"by_user/{}.txt".format(u), header=None)
                 start = dateutil.parser.parse(uqatts.iloc[0,0])
                 end = dateutil.parser.parse(uqatts.iloc[-1,0])
                 if start < target <= end:
@@ -120,7 +121,7 @@ if __name__ == '__main__':
         
             for uix,u in enumerate(active_users):
                 X = numpy.zeros(shape=(1,len(all_qids)))#, dtype=numpy.int32)
-                uqatts = pandas.read_csv("../by_user/{}.txt".format(u), header=None)
+                uqatts = pandas.read_csv(filebase+"by_user/{}.txt".format(u), header=None)
                 uqatts[0] = pandas.to_datetime(uqatts[0])
                 uqatts = uqatts[uqatts[0]<=target]
 #                 print("size for {}".format(target), uqatts.size)
@@ -147,7 +148,7 @@ if __name__ == '__main__':
 #         exp_mx, all_qids = remove_zero_rc(exp_mx, all_qids)
         
         #exp_mx.to_csv("exp_mx_all.csv")
-            numpy.savetxt("../by_date/mx{}.csv".format(target.strftime("%Y%m%d")), exp_mx, delimiter=",")#, fmt="%i")
+            numpy.savetxt(filebase+"/by_date/mx{}.csv".format(target.strftime("%Y%m%d")), exp_mx, delimiter=",")#, fmt="%i")
             print("saved mx")
         
     colours = numpy.array([ '#880000','#008800','#000088','#888800','#880088','#008888' ])

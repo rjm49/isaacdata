@@ -21,9 +21,10 @@ from collections import Counter
 from utils.utils import extract_runs_w_timestamp, ATT_QID, ATT_COR, ATT_TIM
 
 decay = 0.999
+base = "../../../isaac_data_files/"
 
 def user_is_interesting(u):
-    uqatts = pandas.read_csv("../by_user/{}.txt".format(u), header=None)
+    uqatts = pandas.read_csv(base+"by_user/{}.txt".format(u), header=None)
     print("uquatts\n",uqatts)
 
     uqatts[ATT_TIM] = pandas.to_datetime(uqatts[ATT_TIM], format='%Y-%m-%d %H:%M:%S.%f')
@@ -50,8 +51,8 @@ plot = True
 if __name__ == '__main__':
 
     #build user experience matrix here....
-    qmeta = pandas.read_csv("../qmeta.csv", header=None)
-    users = open("../users.csv").read().splitlines()
+    qmeta = pandas.read_csv(base+"qmeta.csv", header=None)
+    users = open(base+"users.csv").read().splitlines()
     shuffle(users)#, lambda: 0.666)
 
     n_users = 30
@@ -121,7 +122,7 @@ if __name__ == '__main__':
         fig, axes = plt.subplots(h,w)
         for uix,u in enumerate(users):
             lev_cnt = Counter()
-            uqatts = pandas.read_csv("../by_user/{}.txt".format(u), header=None)
+            uqatts = pandas.read_csv(base+"by_user/{}.txt".format(u), header=None)
             print("uquatts\n",uqatts)
 
             exp_mx= pandas.DataFrame(columns=["timestamp"]+list(levels))

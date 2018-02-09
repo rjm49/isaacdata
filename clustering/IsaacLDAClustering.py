@@ -18,15 +18,16 @@ from numpy.random import choice
 from numpy import random, unique
 from math import isnan
 from collections import Counter
-from backfit.BackfitTest import extract_runs
+from utils.utils import extract_runs_w_timestamp
 
+base = "../../../isaac_data_files/"
 create_xm = True
 plot = True
 if __name__ == '__main__':
 
     #build user experience matrix here....
-    qmeta = pandas.read_csv("../qmeta.csv", header=None)
-    users = open("../users.csv").read().splitlines()
+    qmeta = pandas.read_csv(base+"qmeta.csv", header=None)
+    users = open(base+"users.csv").read().splitlines()[0:1000]
     #users = choice(users, size=3000, replace=False)
     print(users)
 #     users = users[0:1000]
@@ -77,13 +78,11 @@ if __name__ == '__main__':
         #cnt_mx.fillna(0.0, inplace=True)
         for i,u in enumerate(users):
 #             print(u,"...")
-            uqatts = pandas.read_csv("../by_user/{}.txt".format(u), header=None)
-            runs = extract_runs(uqatts)
+            uqatts = pandas.read_csv(base+"by_user/{}.txt".format(u), header=None)
+            runs = extract_runs_w_timestamp(uqatts)
             
             for run in runs:
-                q = run[0]
-                n_atts = run[1]
-                n_pass = run[2]
+                ts,q,n_atts,n_pass= run
                 q = q.replace("|","~")
 #                 L = lev_lookup[q]
                 c = cat_lookup[q]
