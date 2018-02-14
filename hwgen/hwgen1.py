@@ -7,6 +7,7 @@ import json
 
 from backfit.BackfitUtils import init_objects
 from irt.irt_engine import IRTEngine
+from matplotlib import pyplot as plt
 
 base = "../../../isaac_data_files/"
 df = pd.read_csv(base+"hwgen1.csv", index_col=0, header=0)
@@ -34,18 +35,17 @@ cats, cat_lookup, all_qids, users, _stretches_, levels, cat_ixs = init_objects(n
                                                                                seed=666)
 
 run_ct = 0
-max_ts = datetime(1,1,MINYEAR)
 print("Generating files for {} users...".format(len(users)))
 
 
 while True:
+    max_ts = datetime(1, 1, MINYEAR)
     r = random.randint(0, teacher_df.shape[0])
     group = teacher_df.iloc[r, :]
     t_id = group["owner_id"]
     g_id = group["id"]
     members = groupmem_df[groupmem_df["group_id"]==g_id]
     users = members["user_id"]
-    print(g_id, t_id, list(users))
 
     for u in users:
         try:
@@ -57,8 +57,9 @@ while True:
             if pd.to_datetime(ts) > max_ts:
                 max_ts = pd.to_datetime(ts)
 
-    ts_cutoff = max_ts - timedelta(days=7)
+    ts_cutoff = (max_ts - timedelta(days=7)) if (max_ts > datetime(1,1,MINYEAR)) else max_ts
 
+    classs_concepts = set()
     recent_concepts = Counter()
     recent_cats = Counter()
     irts = {}
@@ -81,6 +82,7 @@ while True:
             concepts = eval(df.loc[q, "related_concepts"]) if not pd.isna(concepts_raw) else []
             #print(ts, u, q, concepts)
 
+            classs_concepts.update(concepts)
             if(pd.to_datetime(ts) >= ts_cutoff or q not in df.index):
                 recent_cats[cat]+=1
                 recent_concepts.update(concepts)
@@ -107,6 +109,19 @@ while True:
     print(recent_cats.most_common(10))
     print(recent_concepts.most_common(10))
 
+    if(recent_concepts):
+        con_index, con_data = zip(*recent_concepts.most_common(10))
+        recent_concepts_df = pd.DataFrame(columns=["count"], index=con_index)
+        recent_concepts_df["count"]=con_data
+
+    if(recent_cats):
+        cat_index, cat_data = zip(*recent_cats.most_common(10))
+        recent_cats_df = pd.DataFrame(columns=["count"], index=cat_index)
+        recent_cats_df["count"]=cat_data
+
+    avg_concept_levels_df = pd.DataFrame(0, columns=["level"], index=classs_concepts)
+    avg_concept_counts_df = pd.DataFrame(0, columns=["level"], index=classs_concepts)
+
     for u in users:
         print("- - - - - - - -")
         print("PUPIL ",u)
@@ -116,7 +131,35 @@ while True:
         if irts[u]:
             print("\nConcept level abilities:")
         for c in irts[u]:
-            print(c,"=",irts[u][c].curr_theta)
+            theta = irts[u][c].curr_theta
+            print(c,"=",theta)
+            avg_concept_levels_df.loc[c,"level"]+=theta
+            avg_concept_counts_df.loc[c,"level"]+=1
         print("- - - - - - - -")
 
-    input("prompt")
+    avg_concept_levels_df = avg_concept_levels_df / avg_concept_counts_df
+    avg_concept_levels_df.fillna(value=0, inplace=True)
+
+    f, (ax1, ax2, ax3) = plt.subplots(1, 3)
+
+    #plt.suptitle("CLASS "+str(g_id))
+    plt.suptitle("CLASS {} : {} to {}".format(g_id, ts_cutoff.date(), max_ts.date()))
+
+    if(recent_concepts):
+        # ax1.axis("equal")
+        ax1.set_title("Concepts studied")
+        # ax1.pie(recent_concepts_df, labels=recent_concepts_df.index)
+        recent_concepts_df.transpose().plot(kind="bar", stacked=True, ax=ax1 )
+    else:
+        ax1.axis("off")
+    if(recent_cats):
+        ax2.axis("equal")
+        ax2.set_title("Categories studied")
+        ax2.pie(recent_cats_df, labels=recent_cats_df.index)
+    else:
+        ax2.axis("off")
+    ax3.set_title("Avg abilities (per cat)")
+    ax3.bar(x=avg_concept_levels_df.index, height=avg_concept_levels_df["level"])
+    plt.xticks(rotation='vertical')
+
+    plt.show()
