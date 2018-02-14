@@ -11,7 +11,7 @@ class IRTEngine(object):
         self.history = []
         self.curr_theta = 3
         self.MAX_THETA = 6
-        self.MIN_THETA = 0
+        self.MIN_THETA = 1
 
     def prob_of_correct_ans(self, theta, beta):
         prob = 1.0 / (1.0+ math.exp(beta - theta))
@@ -35,7 +35,7 @@ class IRTEngine(object):
     #     print("sum_spread=",sum_spread, "scaled_sp=",(sum_spread/sum_info))
     #     print("total info", sum_info)
         new_theta = curr_theta + (sum_spread / sum_info)
-        print("raw new theta=", new_theta)
+        # print("raw new theta=", new_theta)
         
         if new_theta >=self.MAX_THETA:
             new_theta = self.MAX_THETA

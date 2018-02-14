@@ -12,7 +12,7 @@ from scipy.optimize.minpack import curve_fit
 import numpy
 
 if __name__ == '__main__':
-    fl = FileLoader(".\database\isaac_MC_data")
+    fl = FileLoader("../../../../isaac_data_files/raw/isaac_MC_data")
     fl.load()
     all_students = fl._by_user    
 #     buda_data = fl._by_user[42363] # get the all_students for user "BUDA"
