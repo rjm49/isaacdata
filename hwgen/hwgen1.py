@@ -5,6 +5,8 @@ import pandas as pd
 import random
 import json
 
+from matplotlib.gridspec import GridSpec
+
 from backfit.BackfitUtils import init_objects
 from irt.irt_engine import IRTEngine
 from matplotlib import pyplot as plt
@@ -140,26 +142,37 @@ while True:
     avg_concept_levels_df = avg_concept_levels_df / avg_concept_counts_df
     avg_concept_levels_df.fillna(value=0, inplace=True)
 
+    plt.style.use('ggplot')
     f, (ax1, ax2, ax3) = plt.subplots(1, 3)
+
+    gs = GridSpec(2, 2)
+    ax1 = plt.subplot(gs[0, 0])
+    # identical to ax1 = plt.subplot(gs.new_subplotspec((0, 0), colspan=3))
+    ax2 = plt.subplot(gs[1, 0])
+    ax3 = plt.subplot(gs[0, 1])
+    ax4 = plt.subplot(gs[1, 1])
 
     #plt.suptitle("CLASS "+str(g_id))
     plt.suptitle("CLASS {} : {} to {}".format(g_id, ts_cutoff.date(), max_ts.date()))
 
     if(recent_concepts):
-        # ax1.axis("equal")
+        ax1.axis("equal")
         ax1.set_title("Concepts studied")
-        # ax1.pie(recent_concepts_df, labels=recent_concepts_df.index)
-        recent_concepts_df.transpose().plot(kind="bar", stacked=True, ax=ax1 )
+        ax1.pie(recent_concepts_df, labels=recent_concepts_df.index)
+        #recent_concepts_df.transpose().plot(kind="barh", width=1.0, stacked=True, ax=ax1 )
     else:
         ax1.axis("off")
     if(recent_cats):
         ax2.axis("equal")
         ax2.set_title("Categories studied")
         ax2.pie(recent_cats_df, labels=recent_cats_df.index)
+        #recent_cats_df.transpose().plot(kind="barh", width=1.0, stacked=True, ax=ax2)
     else:
         ax2.axis("off")
     ax3.set_title("Avg abilities (per cat)")
     ax3.bar(x=avg_concept_levels_df.index, height=avg_concept_levels_df["level"])
+    # ax4.set_title("Avg abilities (per cat)")
+    # ax4.bar(x=avg_concept_levels_df.index, height=avg_concept_levels_df["level"])
     plt.xticks(rotation='vertical')
 
     plt.show()
