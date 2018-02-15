@@ -1,4 +1,4 @@
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import timedelta, datetime, MINYEAR
 
 import pandas as pd
@@ -49,6 +49,9 @@ while True:
     members = groupmem_df[groupmem_df["group_id"]==g_id]
     users = members["user_id"]
 
+    if(len(users) < 10):
+        continue
+
     for u in users:
         try:
             runs = open("../../../isaac_data_files/by_runs/{}.txt".format(u)).readlines()
@@ -66,6 +69,8 @@ while True:
     recent_cats = Counter()
     irts = {}
     subj_irts = {}
+    concept_levels = defaultdict(list)
+    cat_levels = defaultdict(list)
     for u in users:
         irts[u]={}
         subj_irts[u]={}
@@ -129,12 +134,15 @@ while True:
         print("PUPIL ",u)
         print("Subject level abilities:")
         for s in subj_irts[u]:
-            print(s,"=",subj_irts[u][s].curr_theta)
+            theta = subj_irts[u][s].curr_theta
+            print(s,"=",theta)
+            cat_levels[s].append(theta)
         if irts[u]:
             print("\nConcept level abilities:")
         for c in irts[u]:
             theta = irts[u][c].curr_theta
             print(c,"=",theta)
+            concept_levels[c].append(theta)
             avg_concept_levels_df.loc[c,"level"]+=theta
             avg_concept_counts_df.loc[c,"level"]+=1
         print("- - - - - - - -")
@@ -153,26 +161,34 @@ while True:
     ax4 = plt.subplot(gs[1, 1])
 
     #plt.suptitle("CLASS "+str(g_id))
-    plt.suptitle("CLASS {} : {} to {}".format(g_id, ts_cutoff.date(), max_ts.date()))
+    plt.suptitle("CLASS {} : ({} Students) : {} to {}".format(g_id, len(users), ts_cutoff.date(), max_ts.date()))
 
     if(recent_concepts):
         ax1.axis("equal")
-        ax1.set_title("Concepts studied")
+        ax1.set_title("Concepts studied this week")
         ax1.pie(recent_concepts_df, labels=recent_concepts_df.index)
         #recent_concepts_df.transpose().plot(kind="barh", width=1.0, stacked=True, ax=ax1 )
     else:
         ax1.axis("off")
     if(recent_cats):
         ax2.axis("equal")
-        ax2.set_title("Categories studied")
+        ax2.set_title("Topics studied this week")
         ax2.pie(recent_cats_df, labels=recent_cats_df.index)
         #recent_cats_df.transpose().plot(kind="barh", width=1.0, stacked=True, ax=ax2)
     else:
         ax2.axis("off")
-    ax3.set_title("Avg abilities (per cat)")
-    ax3.bar(x=avg_concept_levels_df.index, height=avg_concept_levels_df["level"])
-    # ax4.set_title("Avg abilities (per cat)")
-    # ax4.bar(x=avg_concept_levels_df.index, height=avg_concept_levels_df["level"])
-    plt.xticks(rotation='vertical')
+    #ax3.bar(x=avg_concept_levels_df.index, height=avg_concept_levels_df["level"])
+    print(list(concept_levels.values()))
+    print(list(concept_levels.keys()))
+    ax3.set_title("Student skill by concept")
+    if(concept_levels):
+        ax3.boxplot(list(concept_levels.values()), labels=list(concept_levels.keys()))
+        plt.sca(ax3)
+        plt.xticks(rotation='vertical')
+    ax4.set_title("Student skill by topic")
+    if(cat_levels):
+        ax4.boxplot(list(cat_levels.values()), labels=list(cat_levels.keys()))
+        plt.sca(ax4)
+        plt.xticks(rotation='vertical')
 
     plt.show()
