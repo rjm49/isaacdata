@@ -117,12 +117,12 @@ while True:
     print(recent_concepts.most_common(10))
 
     if(recent_concepts):
-        con_index, con_data = zip(*recent_concepts.most_common(10))
+        con_index, con_data = zip(*recent_concepts.most_common())
         recent_concepts_df = pd.DataFrame(columns=["count"], index=con_index)
         recent_concepts_df["count"]=con_data
 
     if(recent_cats):
-        cat_index, cat_data = zip(*recent_cats.most_common(10))
+        cat_index, cat_data = zip(*recent_cats.most_common())
         recent_cats_df = pd.DataFrame(columns=["count"], index=cat_index)
         recent_cats_df["count"]=cat_data
 
