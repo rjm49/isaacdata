@@ -14,7 +14,6 @@ from matplotlib import pyplot as plt
 base = "../../../isaac_data_files/"
 df = pd.read_csv(base+"hwgen1.csv", index_col=0, header=0)
 
-base = "../../../isaac_data_files/"
 #choose a teacher for whose class to create homework
 teacher_df = pd.read_csv(base+"groups.csv")
 groupmem_df = pd.read_csv(base+"group_memberships.csv")
