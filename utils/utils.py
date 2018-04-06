@@ -10,6 +10,54 @@ ATT_TIM=0
 ATT_COR=1
 ATT_QID=2
 
+
+def extract_runs_w_timestamp_df(attempts, pv_ts=None, this_ts=None):
+    times = []
+    qids = []
+    cors = []
+    lens = []
+    num_correct = 0
+    num_attempts = 0
+    c = Counter()
+    run_qid = None
+
+    if pv_ts and this_ts:
+        #this is our cue to filter
+        attempts = attempts.loc[(attempts["timestamp"]>pv_ts) & (attempts["timestamp"]<=this_ts)]
+
+    tm=None
+    for ix, att_series in attempts.iterrows():
+        # we want to isolate contiguous atts against a question into "qids" and determine whether each run was successful or not
+        # since students can repeatedly run against a question, it is not sufficient just to filter on the question ID
+        new_run_qid = att_series[5]
+        is_corr = att_series[6]
+        tm = att_series[4]
+
+        if (new_run_qid != run_qid):
+            #             print("new run")
+            qids.append(run_qid)
+            lens.append(num_attempts)
+            cors.append(num_correct)
+            times.append(tm)
+            run_qid = new_run_qid
+            num_correct = 1 if is_corr else 0
+            num_attempts = 1
+        else:
+            num_attempts += 1
+            num_correct += (1 if is_corr else 0)
+
+    qids.append(run_qid)
+    lens.append(num_attempts)
+    cors.append(num_correct)
+    times.append(tm)
+
+    if tm is None:
+        return None
+
+    uni = list(zip(times, qids, lens, cors))
+    return uni[1:]  # lose the first entry, which is a dummy
+
+
 def extract_runs_w_timestamp(attempts):
     times = []
     qids = []
@@ -115,3 +163,8 @@ def balanced_subsample(x,y,subsample_size=1.0):
     ys = np.concatenate(ys)
 
     return xs,ys
+
+def jaccard_score(u,v):
+    if len(u.union(v))==0:
+        return 0.0
+    return (len(u.intersection(v)) / len(u.union(v)))
