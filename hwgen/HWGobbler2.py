@@ -1,11 +1,14 @@
 import os
 from collections import Counter
+from datetime import datetime
+from math import isnan
 from pickle import load
-from random import shuffle
+from pprint import pprint
+from random import shuffle, seed
 
 import numpy
 import pandas
-from keras import Sequential
+from keras import Sequential, Input, callbacks
 from keras.callbacks import EarlyStopping
 from keras.layers import Dense, Activation, Dropout
 from keras.models import load_model
@@ -25,8 +28,8 @@ base = "../../../isaac_data_files/"
 #this would have qn output nodes
 
 n_users = -1
-ass_n = 10000
-cats, cat_lookup, all_qids, users, diffs, levels, cat_ixs = init_objects(n_users)
+cats, cat_lookup, _, users, diffs, levels, cat_ixs = init_objects(n_users)
+
 
 def make_gb_question_map():
     gbd_df = pandas.read_csv(base + "gameboards.txt", sep="~")
@@ -49,16 +52,32 @@ def get_students_in_group(gr_id):
 hwdf = pandas.read_csv(base + "hwgen1.csv", index_col=0, header=0)
 def profile_students(student_list, profile_df, up_to_ts, user_cache):
     profiles = {}
+    if not student_list:
+        return profiles
+
+    genesis = pandas.to_datetime("1970-01-01")
+    sys_mean_dob_del =  (profile_df[(profile_df.role=="STUDENT")]["date_of_birth"] - genesis).mean()
+
+    profile_df = profile_df[(profile_df.id.isin(student_list))]
+    dobs = profile_df["date_of_birth"]
+
+    dob_dels = dobs - genesis
+    mean_del = dob_dels.mean()
+    if (pandas.isnull(mean_del)):
+        print("nan mean dob, use system mean")
+        mean_dob = sys_mean_dob_del + genesis
+    else:
+        mean_dob = mean_del + genesis
+
     for psi in student_list:
-        age = 0
-        if psi in profile_df.index:
-            dob = profile_df.loc[psi, "date_of_birth"]
-            # print("dob", dob, type(dob))
-            dob = pandas.to_datetime(dob)
-            if isinstance(dob, pandas.Timestamp):
-                age = (up_to_ts - dob).days / 365.242
-            else:
-                age = 0
+        if(profile_df[profile_df.id==psi]["date_of_birth"]).shape[0]==0:
+            continue
+        dob = profile_df[profile_df.id==psi]["date_of_birth"].iloc[0]
+        if not isinstance(dob, pandas.Timestamp):
+            dob = mean_dob
+        age = (up_to_ts - dob).days / 365.242
+        if numpy.isnan(age):
+            age = -1
         # profile student at time of assignment
         pf = profile_student(psi, age, up_to_ts, cats, cat_lookup, cat_ixs, levels, concepts_all, hwdf, user_cache)
         if (pf):  # ie. if not empty ... TODO why do we get empty ones??
@@ -68,13 +87,14 @@ def profile_students(student_list, profile_df, up_to_ts, user_cache):
     return profiles
 
 asst_fname = base+"assignments.pkl"
-def make_data():
+all_qids = list(pandas.read_csv(base+"all_pids.csv")["page_id"])
+def make_data(ass_n):
+    asses = []
     ass_df = pandas.read_csv(base + "gb_assignments.csv")
-    ass_df = ass_df.iloc[27000:, :]
+    # ass_df = ass_df.iloc[27000:, :]
     sprofs = pandas.read_csv(base + "student_profiling/users_all.csv")
     sprofs["date_of_birth"] = pandas.to_datetime(sprofs["date_of_birth"])
     gb_qmap = make_gb_question_map()
-    asses = []
     ass_ct =0
 
     ass_df["timestamp"] = pandas.to_datetime(ass_df["timestamp"])
@@ -109,32 +129,76 @@ def make_data():
         ass_entry = (ts, gb_id, gr_id, this_qns, profiles, qarray)
         asses.append(ass_entry)
         print("...{} students".format(len(profiles)))
+    print("dumping")
     joblib.dump(asses, asst_fname)
+    print("dumped")
     return asses
 
 def make_model(n_in, n_out):
-    Sequential()
-    model.add(Dense(n_out, activation='relu', input_dim=n_in))
-    model.add(Dropout(0.5))
-    model.add(Dense(n_out, activation='relu'))
-    model.add(Dropout(0.5))
-    # model.add(Dense(n_in, activation='relu'))
-    # model.add(Dropout(0.5))
-    model.add(Dense(n_out, activation='sigmoid'))
-    # sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
-    # optimiser = Adam(0.0002, 0.5)
-    optimiser = Adam()
-    model.compile(loss="binary_crossentropy", optimizer=optimiser, metrics=["mse", "binary_crossentropy"])
+    print(n_in, n_out)
+    mode="ML_SOFTMAX"
 
+    model = Sequential()
+
+    if mode=="MLBIN":
+        model.add(Dropout(0.5, input_shape=(n_in,)))
+        model.add(Dense(4800, activation='relu', input_dim=n_in))
+        model.add(Dropout(0.5))
+        model.add(Dense(2400, activation='relu'))
+        model.add(Dropout(0.5))
+        model.add(Dense(1200, activation='relu'))
+        model.add(Dropout(0.5))
+        model.add(Dense(n_out, activation='sigmoid'))
+        # sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+        # optimiser = Adam(0.0002, 0.5)
+        optimiser = Adam()
+        model.compile(loss="binary_crossentropy", optimizer='rmsprop')
+    elif mode=="MLBIN_SMALL":
+        model.add(Dropout(0.5, input_shape=(n_in,)))
+        model.add(Dense(8*n_out, activation='relu', input_dim=n_in))
+        model.add(Dropout(0.5))
+        model.add(Dense(8*n_out, activation='relu'))
+        model.add(Dropout(0.5))
+        model.add(Dense(8*n_out, activation='relu'))
+        model.add(Dropout(0.5))
+        model.add(Dense(8*n_out, activation='relu'))
+        model.add(Dropout(0.5))
+        model.add(Dense(n_out, activation='sigmoid'))
+        # sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+        # optimiser = Adam(0.0002, 0.5)
+        optimiser = Adam()
+        model.compile(loss="binary_crossentropy", optimizer='rmsprop')
+    elif mode=="ML_SOFTMAX":
+        model.add(Dropout(0.5, input_shape=(n_in,)))
+        model.add(Dense(8*n_out, activation='relu', input_dim=n_in))
+        model.add(Dropout(0.5))
+        model.add(Dense(8*n_out, activation='relu'))
+        model.add(Dropout(0.5))
+        model.add(Dense(8*n_out, activation='relu'))
+        model.add(Dropout(0.5))
+        model.add(Dense(4*n_out, activation='relu'))
+        model.add(Dropout(0.5))
+        model.add(Dense(n_out, activation='softmax'))
+        # sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+        # optimiser = Adam(0.0002, 0.5)
+        optimiser = Adam()
+        model.compile(loss="categorical_crossentropy", optimizer='rmsprop')
+    return model
+
+con_page_lookup = page_to_concept_map()
 def convert_to_Xy(assts, split=None):
+    ret = []
     if(split):
+        split = int(split * len(assts))
+        seed(666)
         shuffle(assts)
-        tr = assts[0:split]
-        tt = assts[split:]
-    for set in [tr,tt]:
-        for a in set:
+        tt = assts[0:split]
+        tr = assts[split:]
+    for s in [tr,tt]:
+        X = []
+        y = []
+        for a in s:
             profiles = a[4]
-            qarray = a[5]
             this_qns = a[3]
             this_cons = set()
             for q in this_qns:
@@ -143,100 +207,66 @@ def convert_to_Xy(assts, split=None):
             for psi in profiles:  # set up the training arrays here
                 X.append(profiles[psi])
                 y.append(this_cons)
-        yield X,y
+        ret.append(X)
+        ret.append(y)
+    return ret
 
-
-# model = None
-# if do_train:
-#     tr = load(open(trdump_fname,"rb"))
-#     X = []
-#     y = []
-#     qs = []
-#     print("profiling")
-#
-#     n_in= len(X[0])
-#     n_out= len(all_qids)
-#     tr=None #don't need this anymore
-#     model = make_model(n_in, n_out)
-#
-#     print("scaling")
-#     mlb = MultiLabelBinarizer(classes=concepts_all)
-#     y = mlb.fit_transform(y)
-#     print(y.shape)
-#     # input("prompt")
-#     scaler = StandardScaler()
-#     training_X = scaler.fit_transform(X)
-#     print("done")
-#
-#     print("fitting")
-#     model.fit(X, y)
-#     print("done")
-#     print("saving model and scaler")
-#     model.save(base+"hwg_model.hd5")
-#     #joblib.dump(model, base+'filename.pkl')
-#     joblib.dump(scaler, base+'hwg_scaler.pkl')
-#     joblib.dump(mlb, base+'hwg_mlb.pkl')
-#     print("done")
-
-
-
+concepts_all = list(concept_extract())
 def train_model(X,y):
+    mlb = MultiLabelBinarizer(classes=concepts_all)
+    y = mlb.fit_transform(y)
+
+    scaler = StandardScaler()
+    X = scaler.fit_transform(X)
+
     model = make_model(len(X[0]), len(y[0]))
-    model.fit(X,y)
+    es = callbacks.EarlyStopping(monitor='val_loss',
+                                  min_delta=0,
+                                  patience=1,
+                                  verbose=0, mode='auto')
+    model.fit(X,y, validation_split=0.2, batch_size=256, epochs=10, shuffle=True, callbacks=[es])
+    return model, mlb, scaler
 
-def evaluate_predictions(pred_y, y):
+def evaluate_predictions(preds, y):
     fout = open(base + "hw_gobbler.out", "w")
-    preds = model.predict(X)
-    topcats = set()
-    topcons = set()
-    cats = set()
-    cons = set()
-    levs = []
-    fout.write("- - - - -\n")
+    print(len(preds[0]))
 
-    for v in y:
-        if v==1:
-            qid=all_qids[v]
-            cons.update(con_page_lookup[qid] if qid in con_page_lookup else "UNK_CONCEPT")
-            cats.add(cat_page_lookup[qid] if qid in cat_page_lookup else "UNK_TOPIC")
-            levs.append(lev_page_lookup[qid] if qid in cat_page_lookup else "UNK_LEV")
+    scores = []
+    for spoof, sooth in zip(preds, y):
+        if len(list(sooth))==0: #TODO skip empty concept-lists for now, but will need a secondary way to deal with these!
+            continue
 
-    vote_ct = Counter()
-    for predix, pred in enumerate(preds):
-        print("pred", pred)
-        for ix, i in enumerate(pred):
-            qid = all_qids[ix]
-            vote_ct[qid] += pred[ix]
+        fout.write("{}\n".format(str(list(sooth))))
+        ixs = (-spoof).argsort()[:len(sooth)] # get the top suggestions
+        print(ixs)
+        recomm_concepts = [concepts_all[ix] for ix in ixs]
+        print("*",sooth)
+        print(">",recomm_concepts)
+        fout.write("{}\n".format( str(recomm_concepts)))
 
-    fout.write(str(cats) + "\n")
-    fout.write(str(cons) + "\n")
-    fout.write(str(levs) + "\n")
+        score = 0
+        for c in sooth:
+            if c in recomm_concepts:
+                score += 1
+        score = score / len(sooth)
+        fout.write("Score {}\n".format(score))
+        scores.append(score)  # hit rate for this prediction
+    avgscore = numpy.mean(scores)
+    fout.write("***\nAvg Score {}\n".format(avgscore))
+    print("Avg Score {}".format(avgscore))
 
-    fout.write("> > > > >\n")
-    topcats = set()
-    topcons = set()
-    toplevs = []
-    top = vote_ct.most_common(10)
-    for qid, cnt in top:
-        topcons.update(con_page_lookup[qid] if qid in con_page_lookup else "UNK_CONCEPT")
-        topcats.add(cat_page_lookup[qid] if qid in cat_page_lookup else "UNK_TOPIC")
-        toplevs.append(lev_page_lookup[qid] if qid in cat_page_lookup else "UNK_LEV")
-    fout.write(str(top) + "\n")
-    fout.write(str(topcats) + "\n")
-    fout.write(str(topcons) + "\n")
-    fout.write(str(toplevs) + "\n")
 
-    catsj = jaccard_score(cats, topcats)
-    consj = jaccard_score(cons, topcons)
-    # levsj = jaccard_score(levs, toplevs)
-    bag_levs = Counter(levs)
-    bag_toplevs = Counter(toplevs)
-    fout.write("{}, {} {}".format(bag_levs, bag_toplevs, bag_levs & bag_toplevs))
-    fout.write("{}, {} {}".format(bag_levs, bag_toplevs, bag_levs | bag_toplevs))
-    levsj = sum((bag_levs & bag_toplevs).values()) / sum((bag_levs | bag_toplevs).values())
-
-    fout.write("\nJaccard indices: categories {}  concepts {}  levels{}\n\n".format(catsj, consj, levsj))
-
+    # catsj = jaccard_score(cats, topcats)
+    # consj = jaccard_score(cons, topcons)
+    # # levsj = jaccard_score(levs, toplevs)
+    # bag_levs = Counter(levs)
+    # bag_toplevs = Counter(toplevs)
+    # fout.write("{}, {} {}".format(bag_levs, bag_toplevs, bag_levs & bag_toplevs))
+    # fout.write("{}, {} {}".format(bag_levs, bag_toplevs, bag_levs | bag_toplevs))
+    # levsj = sum((bag_levs & bag_toplevs).values()) / sum((bag_levs | bag_toplevs).values())
+    #
+    # fout.write("\nJaccard indices: categories {}  concepts {}  levels{}\n\n".format(catsj, consj, levsj))
+    fout.close()
 
 
 cat_page_lookup = {}
@@ -246,7 +276,6 @@ for k in cat_lookup.keys():
     if qpage not in cat_page_lookup:
         cat_page_lookup[qpage] = qsft
 
-con_page_lookup = page_to_concept_map()
 
 lev_page_lookup = {}
 for k in levels.keys():
@@ -256,51 +285,33 @@ for k in levels.keys():
         lev_page_lookup[qpage] = L
 
 #get assignments ....
-all_qids = list(pandas.read_csv(base+"all_pids.csv")["page_id"])
-
-gbd_map = {}
-gbd_name_map = {}
-
-concepts_all = list(concept_extract())
-trdump_fname = base + "hw_trfile.pkl"
-ttdump_fname = base + "hw_ttfile.pkl"
-
-ct_tried = 0
-ct_no_ev_dets = 0
-ct_missing_gbid = 0
-# if data_gen:
-#     # atypes = pandas.read_csv(base + "atypes.csv", header=None)
-#     training_X = []
-#     training_y = []
-#     # for each assignment
-#
-#
-#
-#     print("no assts tried=",ct_tried)
-#     print("no event details=", ct_no_ev_dets)
-#     print("missing gb id=", ct_missing_gbid)
-#     # input("prompt")
-
-os.nice(10)
 
 
 
-data_gen = True
-do_train = True
-do_testing = False
+
+os.nice(3)
+
+ass_n = 10000 # the number of SUCCESSFUL (i.e. complete) assignments to process # incomplete assts are skipped and do not count
+data_gen = False
+do_train = False
+do_testing = True
 
 asses=None
+model=None
 if __name__=="__main__":
     if data_gen:
-        asses = make_data()
+        asses = make_data(ass_n)
 
     if asses is None:
         asses = load(open(asst_fname, "rb"))
 
-    X,y, test_X,test_y = convert_to_Xy(asses)
+    X,y, test_X,test_y = convert_to_Xy(asses, split=0.10)
 
     if do_train:
         model, mlb, scaler = train_model(X,y)
+        model.save(base + 'hwg_model.hd5')
+        joblib.dump(mlb, base + 'hwg_mlb.pkl')
+        joblib.dump(scaler, base + 'hwg_scaler.pkl')
 
     if do_testing:
         if model is None:

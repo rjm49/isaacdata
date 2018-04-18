@@ -3,239 +3,180 @@ import datetime
 import numpy
 import pandas as pd
 
-from backfit.BackfitUtils import init_objects
-from hwgen.concept_extract import concept_extract
-from irt.irt_engine import IRTEngine
-from isaac.itemencoding import gen_X_primed, gen_qenc, s_features, n_components, k_features, n_concepts
-from utils.utils import extract_runs_w_timestamp, extract_runs_w_timestamp_df
+from hwgen.common import extract_runs_w_timestamp_df2, n_components, n_concepts, init_objects, make_db_call
 
 
-def profile_student(psi, age, ts, cats, cat_lookup, cat_ixs, levels, concepts_all, df, cache):
-    return profile_student_enc_cached(psi, age, ts, cats, cat_lookup, cat_ixs, levels, concepts_all, df, cache)
+def profile_student(psi, age, ts, cats, cat_lookup, cat_ixs, levels, concepts_all, df, cache, attempts_df=None):
+    return profile_student_enc(psi, age, ts, cats, cat_lookup, cat_ixs, levels, concepts_all, df, cache, attempts_df)
 
-def profile_student_irt(u, ass_ts, cats, cat_lookup, cat_ixs, levels, concepts_all):
+# def profile_student_irt(u, ass_ts, cats, cat_lookup, cat_ixs, levels, concepts_all):
+#     #load student's files
+#     base = "../../../isaac_data_files/"
+#     #cats, cat_lookup, all_qids, users, _stretches_, levels, cat_ixs = init_objects(-1, path=base, seed=666)
+#     df = pd.read_csv(base + "hwgen1.csv", index_col=0, header=0)
+#     #runs = open(base + "by_runs/{}.txt".format(u)).readlines()
+#     fname = base+"by_user/{}.txt".format(u)
+#     try:
+#         attempts = pd.read_csv(fname, header=None)
+#     except FileNotFoundError:
+#         return []
+#     runs = extract_runs_w_timestamp(attempts)
+#
+#     u_run_ct = len(runs)
+#     all_zero_level = True
+#     run_ct=0
+#
+#     irts = {}
+#     subj_irts = {}
+#     print("num of runs", len(runs))
+#     cat_levels = [0] * len(cats)
+#     concept_levels = [0] * 100
+#
+#     for run_ix, run in enumerate(runs):
+#         run_ct += 1
+#         ts, q, n_atts, n_pass = run
+#         ts = pd.to_datetime(ts)
+#         # print("rum", run_ct, ts)
+#
+#         if ts > ass_ts:
+#             break
+#         # print(ts, "<=", ass_ts)
+#         qt = q.replace("|","~")
+#         cat = cat_lookup[qt]
+#         lev = levels[qt]
+#
+#         if q not in df.index:
+#             continue
+#         concepts_raw = df.loc[q, "related_concepts"]
+#
+#         concepts = eval(concepts_raw) if not pd.isna(concepts_raw) else []
+#         for c in concepts:
+#             if c not in irts:
+#                 print("at run", run_ct, "new irt engine for", u,c)
+#                 irts[c] = IRTEngine()
+#             else:
+#                 irt = irts[c]
+#                 irt.curr_theta = irt.update(lev, (n_pass > 0))
+#                 irts[c] = irt
+#                 print(u, c,"history =", irt.history)
+#                 print("at run", run_ct, "irt update", u, c, irt.curr_theta)
+#
+#         if cat not in subj_irts:
+#             subj_irts[cat] = IRTEngine()
+#         else:
+#             subj_irts[cat].curr_theta = subj_irts[cat].update(lev, (n_pass > 0))
+#             print("at run", run_ct, "irt cat update", u, cat, subj_irts[cat].curr_theta)
+#
+#         for s in subj_irts:
+#             catix = cat_ixs[cat]
+#             theta = subj_irts[s].curr_theta
+#             print(s,"=",theta)
+#             cat_levels[catix]=theta
+#         if irts:
+#             print("\nConcept level abilities:")
+#         for c in irts:
+#             theta = irts[c].curr_theta
+#             print(c,"=",theta)
+#             conix = concepts_all.index(c)
+#             concept_levels[conix]=theta
+#
+# #    concatd = cat_levels + concept_levels
+#     concatd = concept_levels
+#     print("Profile for user {}: {}".format(u, concatd))
+#     if concatd==[]:
+#         print("empty")
+#     return concatd
+
+# def get_attempts_from_db(u):
+#     wrap = lambda list : ', '.join("'{0}'".format(w) for w in list)
+#     u = wrap(u)
+#     query = ("".join(open("user_query.sql").readlines())).format(u)
+#     from hwgen import HWGobbler_DB
+#     return HWGobbler_DB.make_db_call(query)
+
+def get_attempts_from_db(u):
+    query = "select user_id, event_details->>'questionId' AS question_id, event_details->>'correct' AS correct, timestamp from logged_events where user_id in ({}) and event_type='ANSWER_QUESTION'"
+    wrap = lambda w : "'{0}'".format(w)
+    u = wrap(u)
+    query = query.format(u)
+    raw_df =  make_db_call(query)
+    # TODO Maybe do stuff to raw_df ??? Profit!
+    raw_df["timestamp"] = pd.to_datetime(raw_df["timestamp"])
+    return raw_df
+
+from_db = True
+def profile_student_enc(u, age, ass_ts, cats, cat_lookup, cat_ixs, levels, concepts_all, df, cache, attempts_df=None):
     #load student's files
     base = "../../../isaac_data_files/"
     #cats, cat_lookup, all_qids, users, _stretches_, levels, cat_ixs = init_objects(-1, path=base, seed=666)
-    df = pd.read_csv(base + "hwgen1.csv", index_col=0, header=0)
-    #runs = open(base + "by_runs/{}.txt".format(u)).readlines()
-    fname = base+"by_user/{}.txt".format(u)
-    try:
-        attempts = pd.read_csv(fname, header=None)
-    except FileNotFoundError:
-        return []
-    runs = extract_runs_w_timestamp(attempts)
 
-    u_run_ct = len(runs)
-    all_zero_level = True
-    run_ct=0
+    if u not in cache:
+        print("Neŧ!")
+        S = numpy.zeros(shape=4)
+        X = numpy.zeros(shape=(n_components, 2))  # init'se a new feature vector w same width as all_X
+        C = numpy.zeros(shape=(n_concepts,1))
+        C[:] = -1
+        X[:] = -1
 
-    irts = {}
-    subj_irts = {}
-    print("num of runs", len(runs))
-    cat_levels = [0] * len(cats)
-    concept_levels = [0] * 100
-
-    for run_ix, run in enumerate(runs):
-        run_ct += 1
-        ts, q, n_atts, n_pass = run
-        ts = pd.to_datetime(ts)
-        # print("rum", run_ct, ts)
-
-        if ts > ass_ts:
-            break
-        # print(ts, "<=", ass_ts)
-        qt = q.replace("|","~")
-        cat = cat_lookup[qt]
-        lev = levels[qt]
-
-        if q not in df.index:
-            continue
-        concepts_raw = df.loc[q, "related_concepts"]
-
-        concepts = eval(concepts_raw) if not pd.isna(concepts_raw) else []
-        for c in concepts:
-            if c not in irts:
-                print("at run", run_ct, "new irt engine for", u,c)
-                irts[c] = IRTEngine()
+        if from_db:
+            if attempts_df is None:
+                print("getting attempts from db")
+                attempts = get_attempts_from_db(u)
+                print("got")
             else:
-                irt = irts[c]
-                irt.curr_theta = irt.update(lev, (n_pass > 0))
-                irts[c] = irt
-                print(u, c,"history =", irt.history)
-                print("at run", run_ct, "irt update", u, c, irt.curr_theta)
-
-        if cat not in subj_irts:
-            subj_irts[cat] = IRTEngine()
+                attempts = attempts_df[attempts_df.user_id == str(u)]
         else:
-            subj_irts[cat].curr_theta = subj_irts[cat].update(lev, (n_pass > 0))
-            print("at run", run_ct, "irt cat update", u, cat, subj_irts[cat].curr_theta)
+            fname = base+"by_user_df/{}.csv".format(u)
+            try:
+                attempts = pd.read_csv(fname, header=0)
+            except FileNotFoundError:
+                print("File not found for student", u)
+                return []
+            attempts.drop(attempts.columns[0], axis=1, inplace=True)# TODO not really sure why we have to do this...
 
-        for s in subj_irts:
-            catix = cat_ixs[cat]
-            theta = subj_irts[s].curr_theta
-            print(s,"=",theta)
-            cat_levels[catix]=theta
-        if irts:
-            print("\nConcept level abilities:")
-        for c in irts:
-            theta = irts[c].curr_theta
-            print(c,"=",theta)
-            conix = concepts_all.index(c)
-            concept_levels[conix]=theta
-
-#    concatd = cat_levels + concept_levels
-    concatd = concept_levels
-    print("Profile for user {}: {}".format(u, concatd))
-    if concatd==[]:
-        print("empty")
-    return concatd
-
-def profile_student_enc(u, age, ass_ts, cats, cat_lookup, cat_ixs, levels, concepts_all, df, cache):
-    S = numpy.zeros(shape=3)
-    X = numpy.zeros(shape=(n_components, 2))  # init'se a new feature vector w same width as all_X
-    C = numpy.zeros(shape=n_concepts)
-
-    #load student's files
-    base = "../../../isaac_data_files/"
-    #cats, cat_lookup, all_qids, users, _stretches_, levels, cat_ixs = init_objects(-1, path=base, seed=666)
-
-    if cache and u in cache:
-        attempts = cache[u]
+        attempts.loc[:,"timestamp"] = pd.to_datetime(attempts.loc[:,"timestamp"])
+        pv_ts = pd.to_datetime("1970-01-01")
+        runs = extract_runs_w_timestamp_df2(attempts)
     else:
-        fname = base+"by_user_df/{}.csv".format(u)
-        try:
-            attempts = pd.read_csv(fname, header=0)
-            attempts.drop(attempts.columns[0], axis=1, inplace=True)
-            if cache and u not in cache:
-                cache[u] = attempts
-        except FileNotFoundError:
-            return []
-            # print("File not found for student",u)
-    runs = extract_runs_w_timestamp_df(attempts)
+        runs, pv_ts, S,X,C = cache[u]
+
+    # attempts = attempts[(attempts.timestamp > pv_ts)]
     if runs is None:
-        return []
+        return None
 
     u_run_ct = len(runs)
     all_zero_level = True
     run_ct=0
 
-
     phi = 1.0
     SS_XP_IX = 0
     SS_SUCCESS_IX = 1
-    SS_FAILED_IX = 2
+    SS_PASSRATE_IX = 2
     SS_AGE_IX = 3
 
+    LEVEL_IX=0
+    TIME_IX=1
+    X[:, TIME_IX] = -1
+
     S[SS_AGE_IX]=age
+
+    fade = 0.99
 
     for run_ix, run in enumerate(runs):
         run_ct += 1
 
         ts, q, n_atts, n_pass = run
-        ts = pd.to_datetime(ts)
         # print("rum", run_ct, ts)
 
-        if ts > ass_ts:
-            break
-        # print(ts, "<=", ass_ts)
-        qt = q.replace("|","~")
-        if qt not in cat_lookup:
-            continue
-
-        cat = cat_lookup[qt]
-        catix = cat_ixs[cat]
-        lev = levels[qt]
-
-        if q not in df.index:
-            continue
-        concepts_raw = df.loc[q, "related_concepts"]
-        concepts = eval(concepts_raw) if not pd.isna(concepts_raw) else []
-
-        for c in concepts:
-            conix = concepts_all.index(c)
-            # C[conix] = 1.0
-            C[conix] = max(C[conix], (1+lev))
-
-        LEVEL_IX = 0
-        TIME_IX = 1
-        Xcat = X[catix]
-        S[SS_XP_IX] = run_ct
-        if (n_pass > 0):
-            # S[SS_SUCCESS_IX] += 1
-            Xcat[LEVEL_IX] = max(Xcat[LEVEL_IX], (lev + 1))
-        else:
-            pass
-            # S[SS_FAILED_IX] += 1
-        X[:,TIME_IX]+=1 # increment the counter for all cat rows
-        Xcat[TIME_IX] = 0 # then reset the counter for this cat row
-        X[catix] = Xcat
-
-    # print("num new runs = {}".format(run_ct))
-
-    concatd = list(S.flatten()) + list(X.flatten()) + list(C.flatten())
-    # print("Profile for user {}: {}".format(u, concatd))
-    # print("Profile for user {}: {}".format(u,"".join(map(str, concatd))))
-    if concatd==[]:
-        print("empty")
-    return concatd
-
-
-def profile_student_enc_cached(u, age, ass_ts, cats, cat_lookup, cat_ixs, levels, concepts_all, df, cache):
-
-    #load student's files
-    base = "../../../isaac_data_files/"
-    #cats, cat_lookup, all_qids, users, _stretches_, levels, cat_ixs = init_objects(-1, path=base, seed=666)
-
-    pv_ts = pd.to_datetime("1970-01-01")
-    S = numpy.zeros(shape=4)
-    X = numpy.zeros(shape=(n_components, k_features))  # init'se a new feature vector w same width as all_X
-    C = numpy.zeros(shape=n_concepts)
-    if cache and u in cache:
-        runs, pv_ts, S,X,C = cache[u]
-        # runs = cache[u]
-    else:
-        #print("ff",u)
-        fname = base+"by_user_df/{}.csv".format(u)
-        try:
-            attempts = pd.read_csv(fname, header=0)
-            attempts["timestamp"] = pd.to_datetime(attempts["timestamp"])
-            attempts.drop(attempts.columns[0], axis=1, inplace=True)
-            runs = extract_runs_w_timestamp_df(attempts)#, pv_ts=pv_ts, this_ts=ass_ts)
-            # if cache and u not in cache:
-            #     cache[u] = runs #, ass_ts, S,X,C
-
-        except FileNotFoundError:
-            return []
-            # print("File not found for student",u)
-
-    if runs is None:
-        runs = []
-
-    u_run_ct = len(runs)
-    print(u_run_ct)
-    all_zero_level = True
-    run_ct=0
-
-
-    phi = 1.0
-    SS_XP_IX = 0
-    SS_SUCCESS_IX = 1
-    SS_FAILED_IX = 2
-    SS_AGE_IX = 3
-
-    S[SS_AGE_IX]=age
-
-    for run_ix, run in enumerate(runs):
-        run_ct += 1
-
-        ts, q, n_atts, n_pass = run
         if ts <= pv_ts:
-            continue
+            runs.remove(run)
+            continue #skip over stuff we've seen
+
         if ts > ass_ts:
             break
 
-        qt = q.replace("|","~")
+        #qt = q.replace("|","~")
+        qt = q.split("|")[0]
         if qt not in cat_lookup:
             continue
 
@@ -245,33 +186,93 @@ def profile_student_enc_cached(u, age, ass_ts, cats, cat_lookup, cat_ixs, levels
 
         if q not in df.index:
             continue
-        concepts_raw = df.loc[q, "related_concepts"]
-        concepts = eval(concepts_raw) if not pd.isna(concepts_raw) else []
+        # concepts_raw = df.loc[q, "related_concepts"]
+        # concepts = eval(concepts_raw)
+        #
+        # conixes = []
+        # if concepts is not None:
+        #     conixes = [concepts_all.index(c) for c in concepts]
+        #
+        # for conix in conixes:
+        #     # C[conix] = 1.0
+        #     if C[conix, LEVEL_IX] < 0:
+        #         C[conix, LEVEL_IX] = 0
+        #         # C[conix, TIME_IX] = 0
 
-        for c in concepts:
-            conix = concepts_all.index(c)
-            # C[conix] = 1.0
-            C[conix] = max(C[conix], (1+lev))
-
-        LEVEL_IX = 0
         Xcat = X[catix]
-        S[SS_XP_IX] = run_ct
+        if Xcat[LEVEL_IX] < 0:
+            Xcat[LEVEL_IX] = 0
+        # LEVEL_IX = 0
+        # TIME_IX = 1
+        S[SS_XP_IX] += n_atts
         if (n_pass > 0):
+            # for conix in conixes:
+            #     if lev + 1 > C[conix, LEVEL_IX]:
+            #         # C[conix] = max(C[conix], (1+lev))
+            #         C[conix, LEVEL_IX] = (C[conix, LEVEL_IX] + 1 + lev) / 2.0
+
             S[SS_SUCCESS_IX] += 1
-            Xcat[LEVEL_IX] = max(Xcat[LEVEL_IX], (lev + 1))
-        else:
-            S[SS_FAILED_IX] += 1
-        X[catix] = Xcat
+            if (lev+1) > Xcat[LEVEL_IX]:
+                Xcat[LEVEL_IX] = (1 + lev + Xcat[LEVEL_IX]) / 2.0
+                # Xcat[LEVEL_IX] = max(Xcat[LEVEL_IX], (lev + 1))
+
+
+        S[SS_PASSRATE_IX] = S[SS_SUCCESS_IX]/S[SS_XP_IX]
+
+        # S[SS_PASS_RATE_IX] = (run_ct-S[SS_FAILED_IX])/run_ct if run_ct!=0.0 else -1.0
+        # X[:,TIME_IX] *= fade
+        # C[(C[:,TIME_IX]>=0), TIME_IX] += 1.0
+        X[(X[:,TIME_IX]>=0), TIME_IX] += 1.0
+        # X[catix, TIME_IX] = 1.0
+
+        # X[:,TIME_IX]+=1 # increment the counter for all cat rows
+        Xcat[TIME_IX] = 0 # then reset the counter for this cat row
+        # X[catix] = Xcat
 
     # print("num new runs = {}".format(run_ct))
 
-    cache[u] = runs, ass_ts, S, X, C
-    # concatd = list(S.flatten()) + list(X.flatten()) + list(C.flatten())
-    concatd = list(S.flatten()) + list(C.flatten())
-
+    concatd = list(S.flatten()) + list(X.flatten()) #+ list(C.flatten())
+    # concatd = numpy.concatenate( (S.flatten(), X.flatten()) )
+    # concatd = list(S.flatten()) + list(C.flatten())
     # print("Profile for user {}: {}".format(u, concatd))
     # print("Profile for user {}: {}".format(u,"".join(map(str, concatd))))
 
-    if concatd==[]:
-        print("empty")
+    cache[u] = runs, ass_ts, S, X, C #update the cache wuth the new values
+
     return concatd
+
+cats, cat_lookup, all_qids, users, diffs, levels, cat_ixs, _, _ = init_objects(-1)
+def profile_students(student_list, profile_df, up_to_ts, concepts_all, hwdf, user_cache, attempts_df):
+    profiles = {}
+    if student_list == []:
+        return profiles
+
+    default_age = -1
+    age = default_age
+    genesis = pd.to_datetime("1970-01-01")
+    dobseries = profile_df[(profile_df.role == "STUDENT")]["date_of_birth"]
+    dobseries.dropna(inplace=True)
+    class_avg_del = (dobseries - genesis).median()
+    class_avg_dob = class_avg_del + genesis
+
+    for psi in student_list:
+        dob = class_avg_dob
+        if (profile_df[profile_df.id==psi]["date_of_birth"]).shape[0]>0:
+            dob = profile_df[profile_df.id==psi]["date_of_birth"].iloc[0]
+            if pd.isnull(dob) or not isinstance(dob, pd.Timestamp):
+                dob = class_avg_dob
+                if pd.isnull(dob) or not isinstance(dob, pd.Timestamp):
+                    age = default_age
+                else:
+                    age = (up_to_ts - dob).days / 365.242
+                    if age > 100 or age < 0:
+                        age = default_age
+        if numpy.isnan(age):
+            input("Wha??")
+        # profile student at time of assignment
+        pf = profile_student(psi, age, up_to_ts, cats, cat_lookup, cat_ixs, levels, concepts_all, hwdf, user_cache, attempts_df)
+        if (pf is not None):  # ie. if not empty ... TODO why do we get empty ones??
+            profiles[psi] = pf
+            print(psi, pf)
+        # train softmax classifier with student profile and assignment profile
+    return profiles
