@@ -34,9 +34,10 @@ hwdf.index = hwdf["question_id"]
 hwdf["related_concepts"] = hwdf["related_concepts"].map(str)
 for concepts_raw in hwdf["related_concepts"]:
     print(concepts_raw)
-    concepts = eval(concepts_raw)
-    if concepts is not None:
-        concepts_all.update(concepts)
+    if concepts_raw != "nan":
+        concepts = eval(concepts_raw)
+        if concepts is not None:
+            concepts_all.update(concepts)
 concepts_all = list(concepts_all)
 
 
