@@ -15,7 +15,7 @@ def get_user_data(user_id_list):
     else:
         commaspaced = ",".join(map(str, user_id_list))
         query = "select * from users where id in ({})".format(commaspaced)
-    print(query)
+    # print(query)
     raw_df = make_db_call(query)
     raw_df["date_of_birth"] = pandas.to_datetime(raw_df["date_of_birth"])
     return raw_df
@@ -27,7 +27,7 @@ def get_student_list(gr_id_list):
         L = gr_id_list
 
     query = "select user_id from group_memberships where group_id in ({})".format(L)
-    print(query)
+    # print(query)
     return make_db_call(query)
 
 def get_group_list(t_id):
@@ -81,14 +81,15 @@ def make_db_call(query):
     with open('./db_config.json') as json_data_file:
         config = json.load(json_data_file)
         db_config = config["postgresql"]
-    print(db_config)
+    # print(db_config)
 
     conn = psycopg2.connect(database=db_config["db"], user=db_config["user"], password=db_config["passwd"],
                             host=db_config["host"], port=db_config["port"])
     curs = conn.cursor()
-    print("Opened database successfully")
+    # print("Opened database successfully")
     try:
         curs.execute(query)
+        print("db hit!")
     except OperationalError as msg:
         print("Command skipped: ", msg)
     col_names = [i[0] for i in curs.description]
@@ -112,10 +113,13 @@ def init_objects(n_users, path="./config_files/", seed=None):
     cat_lookup = OrderedDict()
     cat_ixs = OrderedDict()
     all_qids = set()
+    all_page_ids = set()
     for r in qmeta.iterrows():
         r = r[1] # get the data part of the tuple
-        q_id = r["page_id"]
+        q_id = r["question_id"]
         all_qids.add(q_id)
+        p_id = r["page_id"]
+        all_page_ids.add(p_id)
         cat = str(r["subject"]) + "/" + str(r["field"]) + "/" + str(r["topic"])
         # cat = r["category"]
         cats.append(cat)
@@ -138,7 +142,7 @@ def init_objects(n_users, path="./config_files/", seed=None):
 
     cat_page_lookup = {}
     for k in cat_lookup.keys():
-        qpage = k.split("~")[0]
+        qpage = k.split("~")[0] #tODO tildas no longer in use!
         qsft = cat_lookup[k]
         if qpage not in cat_page_lookup:
             cat_page_lookup[qpage] = qsft
@@ -150,4 +154,4 @@ def init_objects(n_users, path="./config_files/", seed=None):
         if qpage not in lev_page_lookup:
             lev_page_lookup[qpage] = L
 
-    return cats, cat_lookup, list(all_qids), None, None, levels, cat_ixs, cat_page_lookup, lev_page_lookup
+    return cats, cat_lookup, list(all_qids), None, None, levels, cat_ixs, cat_page_lookup, lev_page_lookup, list(all_page_ids)

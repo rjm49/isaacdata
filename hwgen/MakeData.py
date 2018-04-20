@@ -1,13 +1,15 @@
+import gzip
+import json
 import os
-import pickle
-
-import numpy
 import pandas
 from numpy import save
+import pickle
 from sklearn.externals import joblib
 from hwgen.common import init_objects, get_meta_data, get_user_data, get_student_list, make_db_call
 from hwgen.concept_extract import concept_extract, page_to_concept_map
 from hwgen.profiler import profile_student, get_attempts_from_db, profile_students
+import _pickle
+import zlib
 
 base = "../../../isaac_data_files/"
 
@@ -15,7 +17,7 @@ base = "../../../isaac_data_files/"
 #this would have qn output nodes
 
 n_users = -1
-cats, cat_lookup, all_qids, users, diffs, levels, cat_ixs, _, _ = init_objects(n_users)
+cats, cat_lookup, all_qids, users, diffs, levels, cat_ixs, _, _, all_page_ids = init_objects(n_users)
 
 # def make_gb_question_map():
 #     gbd_df = pandas.read_csv(base + "gameboards.txt", sep="~")
@@ -58,7 +60,7 @@ concepts_all = list(concepts_all)
 
 
 
-asst_fname = base+"assignments.pkl"
+asst_fname = base+"assignments.txt"
 
 
 def make_data(ass_n):
@@ -88,6 +90,9 @@ def make_data(ass_n):
 
     # all_students = get_student_list(group_list)
 
+    # afile = open(afname,"w")
+    # afile.write("[\n")
+    ct=0
     for ass in ass_df.iterrows():
         if 0 < ass_n < ass_ct:
             break
@@ -117,23 +122,27 @@ def make_data(ass_n):
         attempts_df = None
 
         profiles = profile_students(students, profile_df, ts, concepts_all, hwdf, user_cache, attempts_df)
+        c_profiles = zlib.compress(pickle.dumps(profiles))
 
-        qarray = [0]*len(all_qids)
-        for qid in this_qns:
-            if qid in all_qids:
-                ix = all_qids.index(qid)
-                qarray[ix] = 1
-
-        ass_entry = (ts, gb_id, gr_id, this_qns, profiles) #, qarray)
+        ass_entry = (ts, gb_id, gr_id, this_qns, c_profiles) #, qarray)
         asses.append(ass_entry)
-        print("...{} students".format(len(profiles)))
+        print("...{} students".format(profiles))
+        # ct+=1
+        # afile.write(str(ass_entry)+"\n")
+        # if ct > 100:
+        #     afile.flush()
+        #     ct=0
     print("dumping")
+    # afile.write("]\n")
+    # afile.close()
     # joblib.dump(asses, asst_fname)
+    # with gzip.open(asst_fname, 'w') as f:
+    #     #_pickle.dump(asses, f)
+    #     f.write(_pickle.dumps(asses))
     with open(asst_fname, 'wb') as f:
-        # Pickle the 'data' dictionary using the highest protocol available.
-        pickle.dump(asses, f, pickle.HIGHEST_PROTOCOL)
+        pickle.dump(asses, f)
     print("dumped")
-    return asses
+    return
 
 os.nice(3)
 
@@ -144,4 +153,4 @@ asses=None
 model=None
 if __name__=="__main__":
     if data_gen:
-        asses = make_data(ass_n)
+        make_data(ass_n)
