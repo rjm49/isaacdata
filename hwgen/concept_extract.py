@@ -10,15 +10,19 @@ def concept_extract(q=None):
     concepts_all = set()
     dconcepts_all = set()
 
-    idx = df.index if q is None else q #here select whether to get concepts just for one qn or for all qns
+    df.index = df["page_id"]
+    idx = df.index if q is None else [q] #here select whether to get concepts just for one qn or for all qns
 
     for q in idx:
         concepts_raw = df.loc[q, "related_concepts"]
-        concepts = eval(df.loc[q, "related_concepts"]) if not pd.isna(concepts_raw) else []
-        dconcepts_raw = df.loc[q, "detailed_concept_sections"]
-        dconcepts = eval(df.loc[q, "detailed_concept_sections"]) if not pd.isna(dconcepts_raw) else []
+        if type(concepts_raw) is str:
+            concepts = eval(concepts_raw)
+        else:
+            concepts = []
+        # dconcepts_raw = df.loc[q, "detailed_concept_sections"]
+        # dconcepts = eval(df.loc[q, "detailed_concept_sections"]) if not pd.isna(dconcepts_raw) else []
         concepts_all.update(concepts)
-        dconcepts_all.update(dconcepts)
+        # dconcepts_all.update(dconcepts)
     # print(list(concepts_all))
     # for ix,c in enumerate(concepts_all):
     #     print(ix, c)
@@ -46,3 +50,8 @@ def page_to_concept_map():
             page_to_concept_map[qpage] = concepts
 
     return page_to_concept_map
+
+if __name__=="__main__":
+    c = concept_extract()
+    for cc in c:
+        print(cc)

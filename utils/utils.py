@@ -11,6 +11,8 @@ ATT_COR=1
 ATT_QID=2
 
 
+
+
 def extract_runs_w_timestamp_df(attempts, pv_ts=None, this_ts=None):
     times = []
     qids = []
@@ -20,10 +22,6 @@ def extract_runs_w_timestamp_df(attempts, pv_ts=None, this_ts=None):
     num_attempts = 0
     c = Counter()
     run_qid = None
-
-    if pv_ts and this_ts:
-        #this is our cue to filter
-        attempts = attempts.loc[(attempts["timestamp"]>pv_ts) & (attempts["timestamp"]<=this_ts)]
 
     tm=None
     for ix, att_series in attempts.iterrows():
