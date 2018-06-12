@@ -1,16 +1,11 @@
-import gzip
-import json
 import os
 from collections import OrderedDict
 
 import pandas
-from numpy import save
 import pickle
-from sklearn.externals import joblib
 from hwgen.common import init_objects, get_meta_data, get_user_data, get_student_list, make_db_call, get_all_assignments
 from hwgen.concept_extract import concept_extract, page_to_concept_map
 from hwgen.profiler import profile_student, get_attempts_from_db, profile_students
-import _pickle
 import zlib
 
 base = "../../../isaac_data_files/"
@@ -21,29 +16,6 @@ FORCE_OVERWRITE = False
 
 n_users = -1
 cats, cat_lookup, all_qids, users, diffs, levels, cat_ixs, cat_page_lookup, lev_page_lookup, all_page_ids = init_objects(n_users)
-
-# def make_gb_question_map():
-#     gbd_df = pandas.read_csv(base + "gameboards.txt", sep="~")
-#     map = {}
-#     for gb_id, item in zip(gbd_df["id"], gbd_df["questions"]):
-#         if str is not type(item):
-#             continue
-#         # print(gb_id)
-#         # print(item)
-#         item = item[1:-1]
-#         item = item.split(",")
-#         map[gb_id] = item
-#     return map
-
-def make_gb_question_map():
-    query = "select id, questions from gameboards"
-    raw_df = make_db_call(query,"gb_q_map.csv")
-    map = {}
-    for r in raw_df.iterrows():
-        gb_id = r[1]["id"]
-        qs = r[1]["questions"] # TODO must we eval()?
-        map[gb_id] = qs
-    return map
 
 # grp_df = pandas.read_csv(base + "group_memberships.csv")
 # def get_students_in_group(gr_id):
@@ -142,15 +114,14 @@ def make_data(ass_n, pickle_at, APPEND=True):
             this_concepts.update(cs)
 
 
-        # if(type(this_qns)=="str"):
-        #     this_qns = eval(this_qns)
-
         gr_id = ass[1]["group_id"]
-        students = get_student_list(gr_id)
+        students = get_student_list([gr_id])
 
         if students.empty:
-            print("no students")
+            print(gr_id, "no students")
             continue
+        else:
+            print(gr_id, "students!")
 
         students = list(students["user_id"])
         profile_df = get_user_data(list(students))
@@ -210,7 +181,7 @@ def make_data(ass_n, pickle_at, APPEND=True):
 
 os.nice(3)
 
-ass_n = 20000 # the number of SUCCESSFUL (i.e. complete) assignments to process # incomplete assts are skipped and do not count
+ass_n = 100000 # the number of SUCCESSFUL (i.e. complete) assignments to process # incomplete assts are skipped and do not count
 pickle_at = 200
 data_gen = True
 

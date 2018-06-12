@@ -84,6 +84,8 @@ while True:
             qt = q.replace("|","~")
             cat = cat_lookup[qt]
             lev = levels[qt]+1
+            if q not in df.index:
+                continue
             concepts_raw = df.loc[q, "related_concepts"]
             concepts = eval(df.loc[q, "related_concepts"]) if not pd.isna(concepts_raw) else []
             #print(ts, u, q, concepts)

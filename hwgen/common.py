@@ -27,7 +27,7 @@ def test_db_connexion():
         return False
     return True
 # DATABASE = test_db_connexion()
-DATABASE=False
+DATABASE=True
 LOAD_FROM_CACHE = True
 SAVE_TO_CACHE = True
 
@@ -157,6 +157,18 @@ def get_all_assignments():
     query = "select id, gameboard_id, group_id, owner_user_id, creation_date from assignments order by creation_date asc"
     name = "gb_assignments2.csv"
     return make_db_call(query,name)
+
+def make_gb_question_map():
+    query = "select id, questions from gameboards"
+    raw_df = make_db_call(query,"gb_q_map.csv")
+    map = {}
+    for r in raw_df.iterrows():
+        gb_id = r[1]["id"]
+        qs = r[1]["questions"] # TODO must we eval()?
+        if type(qs) is str:
+            qs = eval(qs)
+        map[gb_id] = qs
+    return map
 
 def init_objects(n_users, path="./config_files/", seed=None):
     qmeta = get_meta_data()

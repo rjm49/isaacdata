@@ -28,7 +28,11 @@ sqlCommands = [
     # ("groups","select * from groups"),
     # ("users","select * from users"),
     # ("all_pids","select distinct page_id from content_data"),
-    ("role_changes", "select * from logged_events where event_type='CHANGE_USER_ROLE'"),
+    # ("role_changes", "select * from logged_events where event_type='CHANGE_USER_ROLE'"),
+    ("user_preferences", "select * from user_preferences"),
+    ("teachers", """"select users.id, family_name, given_name, email, preference_type, preference_name, preference_value from users, user_preferences where users.role='TEACHER' and users.id=user_id
+and preference_type in ('EMAIL_PREFERENCE','BETA_FEATURE') and preference_value=TRUE
+order by family_name, given_name""")
 ]
 
 for command_pair in sqlCommands:
