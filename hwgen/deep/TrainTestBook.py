@@ -162,7 +162,7 @@ def make_phybook_model(n_S, n_X, n_U, n_P):
 
     # w = 1024 # best was 256
     # w = (n_S + n_X + n_P)//2
-    w = 500
+    w = 256
 
     # i_X = Dense(200, activation='relu')(input_X)
     # i_U = Dense(200, activation='relu')(input_U)
@@ -173,7 +173,7 @@ def make_phybook_model(n_S, n_X, n_U, n_P):
     # hidden = Dense((w+n_P)//2, activation='relu')(hidden)
 
     # decode_test = Dense(n_Q, activation="sigmoid", name="decode_test")(hidden)
-    hidden = Dense(w, activation='relu')(hidden)
+    # hidden = Dense(w, activation='relu')(hidden)
     # hidden = Dropout(.5)(hidden)
 
     # hidden = Dense(w, activation='relu')(hidden)
@@ -209,8 +209,6 @@ def make_phybook_model(n_S, n_X, n_U, n_P):
 
     m.summary()
     return m
-
-
 
 
 numpy.set_printoptions(threshold=numpy.nan)
@@ -268,7 +266,7 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
     for e in range(nb_epoch):
         xygen = hwgengen2(tr, batch_size=-1, FRESSSH=bake_fresh, qid_override=qlist)  # make generator object
         print("macroepoch %d of %d" % (e, nb_epoch))
-        for S,X,U,y,ai,awgt,slist in xygen:
+        for S,X,U,y,ai,awgt,_,_ in xygen:
 
             # if False:
             #     for aie, s, x, u, t in zip(ai, S, X, U, y):
@@ -398,14 +396,40 @@ def print_student_summary(ai, psi, s,x, ylb, clz, t, p, pr):
     print("{}:{}\t{}|\t{}\t{}\t{}\t({})\t{}\t{}\t{}\t{}".format(ai, psi, pr, t, p, pid, clz, numpy.sum(x), s, numpy.mean(xlevs),
                                                              top_subjs))
 
-def print_class_report_card(ailist, S,U,X, y, y_preds, awgt, slist, qhist, ylb):
+def save_class_report_card(ailist, S, U, X, y, y_preds, awgt, slist, qhist, ylb):
     max_probs = y_preds.max(axis=1)
     max_labs = y_preds.argmax(axis=1)
+    fn_ai = None
     for ai, s, u, x, t, p, pr, wgt, psi, qh in zip(ailist, S, U, X, y, max_labs, max_probs, awgt, slist, qhist):
+        if fn_ai is None:
+            fn_ai = str(ai)
+            f = open("report_cards/"+fn_ai+".csv","w")
+            f.write("student,age,months_on_isaac,qns_tried,successes,hexes_done,top_5_topics,last_5_qns\n")
+
+        tabu = []
+        for ix in range(u.shape[0]):
+            if u[ix] > 0:
+                label = all_qids[ix]
+                page = label.split("|")[0]
+                if page not in tabu:
+                    tabu.append(page)
+        if len(tabu)>0:
+            tabu = "\n".join(map(str,tabu))
+            tabu = '"{}"'.format(tabu)
+
         big5 = get_top_subjs(x, ylb, 5)
-        print("{}\t({}): {:0.1f}mo {}/{}; {}".format(psi, int(10*s[0])/10.0, s[1]/30.44, numpy.sum((u>0)), numpy.sum(x), big5))
-        for q,ts in qh[-6:]:
-            print("{} @ {}".format( q,ts ))
+        if len(big5)>0:
+            big5 = "\n".join(map(str,big5))
+            big5 = '"{}"'.format(big5)
+        if len(qh)>0:
+            ql,tl = zip(*qh)
+            last5 = [q for q in numpy.unique(ql)[-5:]]
+            last5 = "\n".join(last5)
+            last5 = '"{}"'.format(last5) #wrap in quotes
+        else:
+            last5 = []
+        f.write("{},{},{:0.1f},{},{},{},{},{}\n".format(psi, int(10*s[0])/10.0, s[1]/30.44, numpy.sum(x), numpy.sum((u>0)), tabu, big5, last5))
+    f.close()
 
 def evaluate_phybook_loss(tt, model, ylb, clb, concept_map, topic_map, qid_override=None): #, sscaler,levscaler,volscaler): #, test_meta):
     print("ready to evaluate...")
@@ -444,7 +468,7 @@ def evaluate_phybook_loss(tt, model, ylb, clb, concept_map, topic_map, qid_overr
         ass_tot += evaluate_hits_against_asst(ailist,y, max_y, y_preds, ylb)
 
         num_students+=psi_len
-        print_class_report_card(ailist, S,U,X, y,y_preds, awgt, slist, qhist, ylb)
+        save_class_report_card(ailist, S, U, X, y, y_preds, awgt, slist, qhist, ylb)
 
         for ai, s,u,x, t,p, pr,clz,this_preds,w,psi in zip(ailist, S,U,X, y,max_y, y_preds.max(axis=1), y_preds.argmax(axis=1), y_preds, awgt, slist):
             # if numpy.sum(x) < 20:
@@ -456,10 +480,10 @@ def evaluate_phybook_loss(tt, model, ylb, clb, concept_map, topic_map, qid_overr
             #print(sortargs)
             p10 = [ylb.classes_[ix] for ix in sortargs[0:10]]
             t10 = [u[ix] for ix in sortargs[0:10]]
-            print(t,p)
-            print(p10)
-            print(t10)
-            numpy.set_printoptions(precision=4)
+            # print(t,p)
+            # print(p10)
+            # print(t10)
+            # numpy.set_printoptions(precision=4)
             # print(list(reversed(numpy.sort(this_preds))))
             # if(numpy.sum(t10)>0):
             #     input("")
@@ -469,9 +493,9 @@ def evaluate_phybook_loss(tt, model, ylb, clb, concept_map, topic_map, qid_overr
             #     i += 1
             # p = ylb.classes_[sortargs[i]]
 
-            print(p10)
-            print(t10)
-            print(this_preds[0:10])
+            # print(p10)
+            # print(t10)
+            # print(this_preds[0:10])
             # if(i > 0):
             #     input(("{}th arg".format(i),t,p))
 
@@ -586,11 +610,11 @@ if __name__ == "__main__":
     #
     # print("loaded {} assignments".format(len(assignments)))
     #
-    do_train = False
+    do_train = True
     do_testing = True
     frisch_backen = False
-    ass_n = 5010
-    split = 10
+    ass_n = 25
+    split = 5
     n_macroepochs = 1
     n_epochs = 100
 

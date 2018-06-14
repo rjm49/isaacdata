@@ -188,7 +188,7 @@ class hwgengen2:
                 psi_list = []
                 qhist_list = []
         print("out of assts")
-        input(">>>")
+        # input(">>>")
         print("empty concepts = {} of {}".format(emcons, len_assts))
         yield S, X, U, y, assids, awgt, psi_list, qhist_list
 
