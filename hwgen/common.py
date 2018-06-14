@@ -260,7 +260,7 @@ def split_assts(assts, ass_n, split, NO_META=True, pid_override=None):
             if sum(item[5]) > 0:
                 del assts[k]
         else:
-            if sum(item[5]) == 0:
+            if 0 == sum(item[5]):
                 del assts[k]
     print(len(assts), "filtered hx assgts")
 

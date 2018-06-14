@@ -478,13 +478,20 @@ def evaluate_phybook_loss(tt, model, ylb, clb, concept_map, topic_map, qid_overr
             # print(sortargs)
             sortargs = list(reversed(numpy.argsort(this_preds)))
             #print(sortargs)
-            p10 = [ylb.classes_[ix] for ix in sortargs[0:10]]
-            t10 = [u[ix] for ix in sortargs[0:10]]
+            pred_labels = [ylb.classes_[ix] for ix in sortargs]
+            pred_probas = list(reversed(numpy.sort(this_preds)))
+            tabus = [u[ix] for ix in sortargs]
             # print(t,p)
             # print(p10)
             # print(t10)
-            # numpy.set_printoptions(precision=4)
-            # print(list(reversed(numpy.sort(this_preds))))
+
+            print("STUDENT: {} (real is {})".format(psi,t))
+            print(s)
+            print(numpy.sum((x>0)), numpy.sum((u>0)), 1.0/numpy.mean(u[u>0]))
+            for i in range(5):
+                print("   {} {:.5f} {}".format(pred_labels[i], pred_probas[i], tabus[i]))
+
+
             # if(numpy.sum(t10)>0):
             #     input("")
 
@@ -511,20 +518,20 @@ def evaluate_phybook_loss(tt, model, ylb, clb, concept_map, topic_map, qid_overr
             #
             # print_student_summary(ai, psi, s, u, ylb, clz, t, p, pr)
 
-        # for t,p,sg in zip(true_y, max_y, sugg_c_labs):
-        #     true_c_labs = concept_map[t]
-        #     pred_c_labs = concept_map[p]
+            # for t,p,sg in zip(true_y, max_y, sugg_c_labs):
+            #     true_c_labs = concept_map[t]
+            #     pred_c_labs = concept_map[p]
             # print(true_c_labs)
             # print(pred_c_labs)
             # print(sg)
             # print("- - -@")
 
-        # num_direct_hits += numpy.sum(max_y == y)
-        # for el,el2 in zip(max_y,y):
-        #     if el[0:4]==el2[0:4]:
-        #         num_chapter_hits+=1
+            # num_direct_hits += numpy.sum(max_y == y)
+            # for el,el2 in zip(max_y,y):
+            #     if el[0:4]==el2[0:4]:
+            #         num_chapter_hits+=1
 
-        # num_cases += len(max_y)
+            # num_cases += len(max_y)
     asst_level_score = ass_tot / num_cases
     batch_score = num_direct_hits / num_cases
     print("direct hits: {} of {}: {}".format(num_direct_hits, num_cases, batch_score))
@@ -611,9 +618,9 @@ if __name__ == "__main__":
     # print("loaded {} assignments".format(len(assignments)))
     #
     do_train = True
-    do_testing = True
+    do_testing = False
     frisch_backen = False
-    ass_n = 25
+    ass_n = 10005
     split = 5
     n_macroepochs = 1
     n_epochs = 100
@@ -636,8 +643,8 @@ if __name__ == "__main__":
     frac = 1 if ass_n <= 0 else (ass_n / assignments.shape[0])
     frac = min(1.0, frac)
     assignments = assignments.sample(frac=frac, random_state=666)
-    tr = assignments[0:-split]
-    tt = assignments[-split:]
+    tt = assignments[0:split]
+    tr = assignments[split:]
 
     # del assignments
 
