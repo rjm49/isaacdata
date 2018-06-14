@@ -162,7 +162,7 @@ def make_phybook_model(n_S, n_X, n_U, n_P):
 
     # w = 1024 # best was 256
     # w = (n_S + n_X + n_P)//2
-    w = 500
+    w = 256
 
     # i_X = Dense(200, activation='relu')(input_X)
     # i_U = Dense(200, activation='relu')(input_U)
@@ -173,7 +173,7 @@ def make_phybook_model(n_S, n_X, n_U, n_P):
     # hidden = Dense((w+n_P)//2, activation='relu')(hidden)
 
     # decode_test = Dense(n_Q, activation="sigmoid", name="decode_test")(hidden)
-    hidden = Dense(w, activation='relu')(hidden)
+    # hidden = Dense(w, activation='relu')(hidden)
     # hidden = Dropout(.5)(hidden)
 
     # hidden = Dense(w, activation='relu')(hidden)
@@ -209,8 +209,6 @@ def make_phybook_model(n_S, n_X, n_U, n_P):
 
     m.summary()
     return m
-
-
 
 
 numpy.set_printoptions(threshold=numpy.nan)
@@ -612,11 +610,11 @@ if __name__ == "__main__":
     #
     # print("loaded {} assignments".format(len(assignments)))
     #
-    do_train = False
+    do_train = True
     do_testing = True
     frisch_backen = False
-    ass_n = 30
-    split = 10
+    ass_n = 25
+    split = 5
     n_macroepochs = 1
     n_epochs = 100
 
