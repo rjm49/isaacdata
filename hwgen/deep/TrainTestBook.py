@@ -266,7 +266,7 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
 
     nb_epoch = n_macroepochs
     for e in range(nb_epoch):
-        xygen = hwgengen2(tr, batch_size=-1, FRESSSH=bake_fresh, qid_override=qlist)  # make generator object
+        xygen = hwgengen2(tr, batch_size=-1, FRESSSH=bake_fresh, qid_override=qlist, return_qhist=False)  # make generator object
         print("macroepoch %d of %d" % (e, nb_epoch))
         for S,X,U,y,ai,awgt,_,_ in xygen:
 
@@ -323,13 +323,13 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
             # for r in range(S.shape[0]):
             #     print(S[r]
 
-            snapshot = tracemalloc.take_snapshot()
-            top_stats = snapshot.statistics('lineno')
+            # snapshot = tracemalloc.take_snapshot()
+            # top_stats = snapshot.statistics('lineno')
+            # print("[ Top 10 ]")
+            # for stat in top_stats[:10]:
+            #     print(stat)
+            # exit()
 
-            print("[ Top 10 ]")
-            for stat in top_stats[:10]:
-                print(stat)
-            exit()
             gc.collect()
 
             model.fit([S,X,U], y, epochs=n_epochs, shuffle=True, batch_size=32, callbacks=[es]) #, class_weight=weights)
@@ -449,7 +449,7 @@ def evaluate_phybook_loss(tt, model, ylb, clb, concept_map, topic_map, qid_overr
     ass_tot = 0
     num_cases = 1
     num_students = 0
-    test_gen = hwgengen2(tt, batch_size="assignment", FRESSSH=False, qid_override=qid_override) #batch_size = "group"
+    test_gen = hwgengen2(tt, batch_size="assignment", FRESSSH=False, qid_override=qid_override, return_qhist=True) #batch_size = "group"
     for S,X,U,y,ailist,awgt,slist,qhist in test_gen:
         print("batch")
 
@@ -599,7 +599,7 @@ def filter_assignments(assignments, book_only):
 
 
 if __name__ == "__main__":
-    tracemalloc.start()
+    # tracemalloc.start()
     print("Initialising deep learning HWGen....")
 
     os.nice(3)
@@ -630,8 +630,8 @@ if __name__ == "__main__":
     #
     do_train = True
     do_testing = False
-    frisch_backen = True
-    ass_n = 100
+    frisch_backen = False
+    ass_n = 10005
     split = 5
     n_macroepochs = 1
     n_epochs = 100
@@ -651,9 +651,11 @@ if __name__ == "__main__":
     assignments["creation_date"] = pandas.to_datetime(assignments["creation_date"])
     # assignments = assignments[assignments["creation_date"] >=pandas.to_datetime("2016-01-01")]
 
-    frac = 1 if ass_n <= 0 else (ass_n / assignments.shape[0])
-    frac = min(1.0, frac)
-    assignments = assignments.sample(frac=frac, random_state=666)
+    # frac = 1 if ass_n <= 0 else (ass_n / assignments.shape[0])
+    # frac = min(1.0, frac)
+    ass_n = assignments.shape[0] if (ass_n<=0) else ass_n
+    assignments = assignments.sample(n=ass_n, random_state=666)
+    print(assignments["id"][0:10])
     tt = assignments[0:split]
     tr = assignments[split:]
 
