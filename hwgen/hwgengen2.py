@@ -1,3 +1,4 @@
+import gc
 import pickle
 import zlib
 
@@ -78,11 +79,11 @@ class hwgengen2:
 
         for i,ts,gb_id,gr_id in zip(self.assid_list, self.ts_master_list, self.gb_id_list, self.gr_id_list):
             students = list(get_student_list(gr_id)["user_id"])
-            save = False
+            # save = False
             for psi in students:  # set up the training arrays here
                 fn = "prof_{}_{}".format(psi, ts)
                 if fn not in self.profiles:
-                    save = True
+                    # save = True
                     print("- - - -   profile for {} .. not found .. will create all ={}".format(psi, SAVE_TO_PROF_CACHE))
                     group_df = get_user_data(students)
                     ts_list = self.ts_cache[psi]
@@ -102,13 +103,11 @@ class hwgengen2:
                         self.profiles[fn] = zlib.compress(pickle.dumps((s_psi, x_psi, u_psi)))
                         print("created profile for ",loopvar, "xp=",numpy.sum(x_psi),"sxp=",numpy.sum(u_psi),"S=",s_psi)
 
-            if SAVE_TO_PROF_CACHE and save:
-                f = open(prof_fname, 'wb')
-                pickle.dump(self.profiles, f)
-                f.flush()
-                print("*** *** *** SAVED")
-        print(">>>closing cache...")
-        f.close()
+        if SAVE_TO_PROF_CACHE: # and save:
+            f = open(prof_fname, 'wb')
+            pickle.dump(self.profiles, f)
+            f.close()
+            print("*** *** *** SAVED")
 
     def __iter__(self):
         b = 0  # batch counter
@@ -187,11 +186,11 @@ class hwgengen2:
                 awgt = []
                 psi_list = []
                 qhist_list = []
+                gc.collect()
         print("out of assts")
         # input(">>>")
         print("empty concepts = {} of {}".format(emcons, len_assts))
         yield S, X, U, y, assids, awgt, psi_list, qhist_list
-
 
 def gen_semi_static(psi, group_df, ts_list):
     S_list = []

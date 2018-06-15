@@ -30,6 +30,8 @@ from hwgen.profiler import get_attempts_from_db
 
 from matplotlib import pyplot as plt
 
+import tracemalloc
+
 base = "../../../isaac_data_files/"
 
 n_users = -1
@@ -168,7 +170,7 @@ def make_phybook_model(n_S, n_X, n_U, n_P):
     # i_U = Dense(200, activation='relu')(input_U)
 
     hidden = Dense(w, activation='relu')(concatenate([input_S, input_X, input_U]))
-    hidden = Dropout(.5)(hidden)
+    # hidden = Dropout(.5)(hidden)
 
     # hidden = Dense((w+n_P)//2, activation='relu')(hidden)
 
@@ -321,13 +323,21 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
             # for r in range(S.shape[0]):
             #     print(S[r]
 
-            model.fit([S,X,U], y, epochs=n_epochs, shuffle=True, batch_size=8, callbacks=[es]) #, class_weight=weights)
+            snapshot = tracemalloc.take_snapshot()
+            top_stats = snapshot.statistics('lineno')
+
+            print("[ Top 10 ]")
+            for stat in top_stats[:10]:
+                print(stat)
+            exit()
+            gc.collect()
+
+            model.fit([S,X,U], y, epochs=n_epochs, shuffle=True, batch_size=32, callbacks=[es]) #, class_weight=weights)
 
             scores = model.evaluate([S,X,U], y)
             print(scores[0], scores[1])
 
             X=y=yc=lv = None
-            gc.collect()
 
     return model, ylb, qlist #, sscaler, levscaler, volscaler
 
@@ -589,6 +599,7 @@ def filter_assignments(assignments, book_only):
 
 
 if __name__ == "__main__":
+    tracemalloc.start()
     print("Initialising deep learning HWGen....")
 
     os.nice(3)
@@ -619,8 +630,8 @@ if __name__ == "__main__":
     #
     do_train = True
     do_testing = False
-    frisch_backen = False
-    ass_n = 10005
+    frisch_backen = True
+    ass_n = 100
     split = 5
     n_macroepochs = 1
     n_epochs = 100
