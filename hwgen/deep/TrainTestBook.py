@@ -101,9 +101,9 @@ def calc_entropies(X, y):
     for x,lab in zip(X,y):
         d[str(lab)].append(x)
     for l in d:
-        print("calc for {}, len {}".format(l,len(d[l])))
+        # print("calc for {}, len {}".format(l,len(d[l])))
         H = entropy(d[l])
-        print("H({}) = {}".format(l, H))
+        print("{}\t{}\t{}".format(l, H, len(d[l])))
 
 def entropy(lizt):
     "Calculates the Shannon entropy of a list"
@@ -164,7 +164,7 @@ def make_phybook_model(n_S, n_X, n_U, n_P):
 
     # w = 1024 # best was 256
     # w = (n_S + n_X + n_P)//2
-    w = 256
+    w = 1024
 
     # i_X = Dense(200, activation='relu')(input_X)
     # i_U = Dense(200, activation='relu')(input_U)
@@ -274,6 +274,13 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
             #     for aie, s, x, u, t in zip(ai, S, X, U, y):
             #         print_student_summary(aie, s, u, ylb, None, t, None, None)
             #     input("standing by")
+
+            # SS = numpy.copy(S)
+            # SS[0] = numpy.round(SS[0],1)
+            # SS[3] = numpy.round(SS[3],1)
+            # XX = numpy.concatenate((SS,X,U), axis=1)
+            # calc_entropies(XX,y)
+            # exit()
 
             y_labs = numpy.array(y)
             if (X==[]):
@@ -629,10 +636,10 @@ if __name__ == "__main__":
     # print("loaded {} assignments".format(len(assignments)))
     #
     do_train = True
-    do_testing = False
+    do_testing = True
     frisch_backen = False
-    ass_n = 10005
-    split = 5
+    ass_n = 2100
+    split = 100
     n_macroepochs = 1
     n_epochs = 100
 
@@ -656,8 +663,8 @@ if __name__ == "__main__":
     ass_n = assignments.shape[0] if (ass_n<=0) else ass_n
     assignments = assignments.sample(n=ass_n, random_state=666)
     print(assignments["id"][0:10])
-    tt = assignments[0:split]
-    tr = assignments[split:]
+    tr = assignments[0:(ass_n - split)]
+    tt = assignments[-split:]
 
     # del assignments
 
@@ -668,7 +675,6 @@ if __name__ == "__main__":
     # xygen = hwgengen.xy_generator(assignments, batch_size=1)  # make generator object
     # for thing in xygen:
     #     ass_list.append(thing)
-
     # ass_list = random.shuffle(ass_list)
     # sc = len(ass_list//ass_n)
     # tr = assignments[0:-(sc*split)]

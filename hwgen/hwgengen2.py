@@ -4,6 +4,7 @@ import zlib
 
 import numpy
 import pandas
+from pandas._libs.tslib import Timestamp
 
 from hwgen.common import init_objects, get_user_data, get_all_assignments, get_student_list, make_gb_question_map
 
@@ -19,6 +20,8 @@ profile_cache="../../../isaac_data_files/gengen_cache/"
 base = "../../../isaac_data_files/"
 prof_fname = base+"gengen_profiles.pkl"
 
+dob_cache = base+"dob_cache.pkl"
+
 LOAD_FROM_PROF_CACHE = True
 SAVE_TO_PROF_CACHE = True
 
@@ -28,6 +31,27 @@ def ass_extract(ass):
     gb_id = ass[1]["gameboard_id"]
     gr_id = ass[1]["group_id"]
     return id,ts,gb_id,gr_id
+
+
+def build_dob_cache(dob_cache, assts):
+    for ix, ass in enumerate(assts.iterrows()):
+        id, ts, gb_id, gr_id = ass_extract(ass)
+        students = list(get_student_list(gr_id)["user_id"])
+        # print("#{}: PREP: grp {} at {}".format(ix, gr_id, ts))
+        group_df = get_user_data(students)
+        for psi in students:
+            if psi not in dob_cache:
+                # print("age gen...")
+                age_df = get_age_df(ts, group_df)
+                age_df["dob"] = pandas.to_datetime(age_df["dob"])
+                # age = age_df.loc[psi, "age"]
+                for psi_inner in students:
+                    dob = age_df.loc[psi,"dob"]
+                    # print(type(dob))
+                    assert isinstance(dob, Timestamp)
+                    dob_cache[psi_inner] = dob
+    return dob_cache
+
 
 
 class hwgengen2:
@@ -45,14 +69,22 @@ class hwgengen2:
         if not FRESSSH:
             print("APPEND mode")
             #recycle old pap
-            f = open(prof_fname, 'rb')
-            self.profiles = pickle.load(f)
-            print("got this many profiles:",len(self.profiles))
-            # print(list(profiles.keys())[0:10])
-            f.close()
+            try:
+                f = open(prof_fname, 'rb')
+                self.profiles = pickle.load(f)
+                print("got this many profiles:",len(self.profiles))
+                # print(list(profiles.keys())[0:10])
+                f.close()
+            except:
+                self.profiles = {}
+            # d = open(dob_cache, 'rb')
+            # self.dob_cache = pickle.load(d)
+            # print("loaded dob cache with {} entries".format(self.dob_cache))
+            # d.close()
         else:
             print("Baking FRESH, like cinnamon!")
             self.profiles = {}
+            # self.dob_cache = {}
 
         self.ts_cache = {}
         self.assid_list = []
@@ -60,6 +92,13 @@ class hwgengen2:
         self.gb_id_list = []
         self.gr_id_list = []
         self.students_list = []
+
+        print("building dob_cache")
+        empty_cache = {}
+        self.dob_cache = build_dob_cache(empty_cache, assts)
+        print(len(empty_cache))
+        print("done")
+
         for ix, ass in enumerate(self.assts.iterrows()):
             id, ts, gb_id, gr_id = ass_extract(ass)
             self.assid_list.append(id)
@@ -82,19 +121,21 @@ class hwgengen2:
                 else:
                     self.ts_cache[psi] = [ts]
 
+        c=-1
         for i,ts,gb_id,gr_id in zip(self.assid_list, self.ts_master_list, self.gb_id_list, self.gr_id_list):
+            c += 1
             has_changed = False
             students = list(get_student_list(gr_id)["user_id"])
             for psi in students:  # set up the training arrays here
                 fn = "prof_{}_{}".format(psi, ts)
                 if fn not in self.profiles:
-                    print("- - - -   profile for {} .. not found .. will create all ={}".format(psi, SAVE_TO_PROF_CACHE))
+                    print("{}- - - -   profile for {} .. not found .. will create all ={}".format(c,psi, SAVE_TO_PROF_CACHE))
                     has_changed = True
                     group_df = get_user_data(students)
                     ts_list = self.ts_cache[psi]
                     print("ts_list", ts_list)
                     print("s..")
-                    s_psi_list = gen_semi_static(psi, group_df, ts_list)
+                    s_psi_list = gen_semi_static(psi, self.dob_cache, ts_list)
                     print("done")
                     print("x..")
                     x_psi_list = gen_experience(psi, ts_list)
@@ -106,6 +147,8 @@ class hwgengen2:
                         loopvar = "prof_{}_{}".format(psi, ts)
                         self.profiles[fn] = zlib.compress(pickle.dumps((s_psi, x_psi, u_psi)))
                         print("created profile for ",loopvar, "xp=",numpy.sum(x_psi),"sxp=",numpy.sum(u_psi),"S=",s_psi)
+                else:
+                    print(".. {} f/cache".format(fn))
             if has_changed:
                 f = open(prof_fname, 'wb')
                 pickle.dump(self.profiles, f)
@@ -187,7 +230,7 @@ class hwgengen2:
         print("out of assts")
         yield S, X, U, y, assids, awgt, psi_list, qhist_list
 
-def gen_semi_static(psi, group_df, ts_list):
+def gen_semi_static(psi, dob_cache, ts_list):
     S_list = []
     raw_attempts = get_attempts_from_db(psi)
     # if raw_attempts.empty:
@@ -199,12 +242,12 @@ def gen_semi_static(psi, group_df, ts_list):
         sx = 0
         days = 1.0
         attempts = raw_attempts[raw_attempts["timestamp"] <= ts]
-        if not attempts.empty:
-            # print("age gen...")
-            age_df = get_age_df(ts, group_df)
-            age = age_df.loc[psi, "age"]
-            # print("done")
+        dob = dob_cache[psi]
+        age = (ts - dob).days / 365.242
+        if (not isinstance(age,float)) or (age>=100) or (age<10):
+            age = 16.9
 
+        if not attempts.empty:
             # print("chex...")
             maxdate = (attempts["timestamp"]).max()
             mindate = (attempts["timestamp"]).min()
@@ -217,11 +260,9 @@ def gen_semi_static(psi, group_df, ts_list):
             xp_atts = attempts.shape[0]
             correct = attempts[attempts["correct"] == True]
             sx = correct.shape[0]
-        if (type(age) is not numpy.float64) or (age>=100) or (age<10):
-            age = 16.9
             # rat = sx/xp if xp>0 else 0
             # print("done...")
-        # S_list.append( numpy.array([age, days, xp_runs, xp_atts, (xp_atts/days), (xp_runs/days), (sx/xp_atts if xp_atts else 0)]) ) #,rat,xp/days,sx/days]))
+            # S_list.append( numpy.array([age, days, xp_runs, xp_atts, (xp_atts/days), (xp_runs/days), (sx/xp_atts if xp_atts else 0)]) ) #,rat,xp/days,sx/days]))
         S_list.append(numpy.array([age, days, (xp_atts/days), (sx/xp_atts if xp_atts else 0)]))
     return S_list
 

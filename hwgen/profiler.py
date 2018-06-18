@@ -119,11 +119,13 @@ def get_age_df(ts, gr_df):
     genesis = pd.to_datetime("1970-01-01")
     dobseries = gr_df[(gr_df.role == "STUDENT")]["date_of_birth"]
     dobseries.dropna(inplace=True)
+
     class_avg_del = (dobseries - genesis).median()
     if class_avg_del is not pd.NaT:
         class_avg_dob = class_avg_del + genesis
         class_avg_age = (ts - class_avg_dob).days / DPY
     else:
+        class_avg_dob = (ts - pd.DateOffset(days=int(DPY*default_age)))
         class_avg_age = default_age
 
     age_df = pd.DataFrame(index=gr_df["id"], columns=["dob","delta","age"])
@@ -134,6 +136,10 @@ def get_age_df(ts, gr_df):
     age_df.loc[(age_df["age"]>100), "age"] = class_avg_age
     age_df.loc[(age_df["age"]<0) , "age"] = class_avg_age
     # age_df[numpy.isnan(age_df["age"])]["age"] = class_avg_age
+
+
+    age_df["dob"].replace(pd.NaT, class_avg_dob, inplace=True)
+
     age_df["age"].replace(numpy.NaN, class_avg_age, inplace=True)
     age_df["age"].replace(nan, class_avg_age, inplace=True)
     return age_df
