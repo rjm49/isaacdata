@@ -138,7 +138,7 @@ def get_age_df(ts, gr_df):
     # age_df[numpy.isnan(age_df["age"])]["age"] = class_avg_age
 
 
-    age_df["dob"].replace(pd.NaT, class_avg_dob, inplace=True)
+    #age_df["dob"].replace(pd.NaT, class_avg_dob, inplace=True)
 
     age_df["age"].replace(numpy.NaN, class_avg_age, inplace=True)
     age_df["age"].replace(nan, class_avg_age, inplace=True)

@@ -2,12 +2,61 @@ import numpy
 import pandas
 
 from hwgen.common import get_user_data, init_objects
-from hwgen.hwgengen2 import hwgengen2, gen_semi_static, gen_success, gen_experience
+from hwgen.hwgengen2 import hwgengen2, gen_semi_static
 from hwgen.profiler import get_attempts_from_db
 from utils.utils import extract_runs_w_timestamp
 from zpd_predictor import ZPDPredictor
 
 cats, cat_lookup, all_qids, _, _, levels, cat_ixs, cat_page_lookup, lev_page_lookup, all_page_ids = init_objects(-1)
+reverse_qid_dict = {}
+for ix,q in enumerate(all_qids):
+    reverse_qid_dict[q]=ix
+
+def gen_experience(psi, ts_list):
+    raw_attempts = get_attempts_from_db(psi)
+    X_list = []
+    X = numpy.zeros(len(all_qids))
+    for ts in sorted(ts_list):
+        attempts = raw_attempts[(raw_attempts["timestamp"] < ts)]
+        hits = attempts["question_id"]
+        for qid in list(hits):
+            try:
+                qix = reverse_qid_dict[qid]
+            except:
+                print("UNK Qn ", qid)
+                continue
+            X[qix] = 1
+        X_list.append(numpy.copy(X))
+        raw_attempts = raw_attempts[(raw_attempts["timestamp"] >= ts)]
+    return X_list
+
+def gen_qhist(psi, ts):
+    raw_attempts = get_attempts_from_db(psi)
+    attempts = raw_attempts[(raw_attempts["timestamp"] < ts)]
+    l1 = list(attempts["question_id"])
+    l2 = list(attempts["timestamp"])
+    qhist = list( zip(l1,l2) )
+    return qhist
+
+def gen_success(psi,ts_list):
+    raw_attempts = get_attempts_from_db(psi)
+    U_list = []
+    U = numpy.zeros(len(all_qids))
+    for ts in sorted(ts_list):
+        attempts = raw_attempts[(raw_attempts["timestamp"] < ts)]
+        hits = attempts[(attempts["correct"] == True)]
+        hits = hits["question_id"]
+        for qid in list(hits):
+            try:
+                qix = reverse_qid_dict[qid]
+            except:
+                print("UNK Qn ", qid)
+                continue
+            attct = len(attempts[attempts["question_id"]==qid])
+            U[qix] = (1.0/attct)
+        U_list.append(numpy.copy(U))
+        raw_attempts = raw_attempts[(raw_attempts["timestamp"] >= ts)]
+    return U_list
 
 def encode_q_vectors(attempts):
     qids = list(attempts["question_id"])
@@ -34,16 +83,18 @@ def main():
     i=0
     for u in user_list[0:1000]:
         i += 1
+        print(i)
         attempts = get_attempts_from_db(u)
         ts_list = list(attempts["timestamp"])
         # S_list = gen_semi_static()
-        S_list += [numpy.zeros(1) for t in ts_list]
-        X_list += gen_experience(u, ts_list)
+        tX = gen_experience(u, ts_list)
+        X_list += tX
         U_list += gen_success(u, ts_list)
         Qv_list += encode_q_vectors(attempts)
+        S_list += [numpy.zeros(1) for t in tX]
         pass_list += list(attempts["correct"]==True)
-        atts_list += [numpy.ones(1) for t in ts_list]
-        if (len(S_list) > 10000) or (i==1000):
+        atts_list += [numpy.ones(1) for t in tX]
+        if (len(X_list) > 10000) or (i==1000):
             S_list = numpy.array(S_list)
             X_list = numpy.array(X_list)
             U_list = numpy.array(U_list)

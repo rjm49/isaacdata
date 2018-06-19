@@ -637,9 +637,9 @@ if __name__ == "__main__":
     #
     do_train = True
     do_testing = True
-    frisch_backen = False
-    ass_n = 5100
-    split = 100
+    frisch_backen = True
+    ass_n = 2500
+    split = 50
     n_macroepochs = 1
     n_epochs = 100
 
@@ -663,6 +663,7 @@ if __name__ == "__main__":
     ass_n = assignments.shape[0] if (ass_n<=0) else ass_n
     assignments = assignments.sample(n=ass_n, random_state=666)
     # print(assignments["id"][0:10])
+    assignments = assignments[0:ass_n]
     tr = assignments[0:(ass_n - split)]
     tt = assignments[-split:]
 
