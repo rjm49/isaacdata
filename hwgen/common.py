@@ -107,12 +107,13 @@ def extract_runs_w_timestamp_df2(attempts, pv_ts=None, this_ts=None):
 def make_db_call(query, name):
     if LOAD_FROM_CACHE:
         try:
-            df = pandas.read_csv(cache_dir + name)
+            fullname = cache_dir + name
+            df = pandas.read_csv(fullname)
             #print("db cache hit! {}".format(name))
             return df
         except:
             if not DATABASE:
-                print("No database conn and no cached version of ({}) found!".format(name))
+                print("No database conn and no cached version of ({}) found!".format(fullname))
                 exit(1)
 
     with open('./db_config.json') as json_data_file:

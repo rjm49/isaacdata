@@ -638,7 +638,7 @@ if __name__ == "__main__":
     do_train = True
     do_testing = True
     frisch_backen = False
-    ass_n = 2100
+    ass_n = 5100
     split = 100
     n_macroepochs = 1
     n_epochs = 100
@@ -662,7 +662,7 @@ if __name__ == "__main__":
     # frac = min(1.0, frac)
     ass_n = assignments.shape[0] if (ass_n<=0) else ass_n
     assignments = assignments.sample(n=ass_n, random_state=666)
-    print(assignments["id"][0:10])
+    # print(assignments["id"][0:10])
     tr = assignments[0:(ass_n - split)]
     tt = assignments[-split:]
 
@@ -691,6 +691,8 @@ if __name__ == "__main__":
         model.save(base + 'hwg_model.hd5')
         joblib.dump((ylb, qlist), base + 'hwg_mlb.pkl')
         # joblib.dump((sscaler,levscaler,volscaler), base + 'hwg_scaler.pkl')
+
+    input("goedel")
 
     if do_testing:
         print("testing")
