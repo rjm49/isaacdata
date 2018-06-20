@@ -1,5 +1,5 @@
 from keras import Model, Input
-from keras.layers import Dense, concatenate
+from keras.layers import Dense, concatenate, Dropout
 from keras.optimizers import Adam
 
 
@@ -10,6 +10,7 @@ def build_pass_model(n_S,n_X,n_U,n_Q):
     input_Q = Input(shape=(n_Q,), name="q_input")
     w = 1024
     hidden = Dense(w, activation='relu')(concatenate([input_S, input_X, input_U, input_Q]))
+    hidden = Dropout(0.5)(hidden)
     out = Dense(1, activation='sigmoid', name="pass_prob")(hidden)
     o = Adam()
     m = Model(inputs=[input_S,input_X, input_U, input_Q], outputs=out )
@@ -40,7 +41,7 @@ class ZPDPredictor():
         if self.pass_model is None:
             self.pass_model = build_pass_model(S.shape[1],X.shape[1], U.shape[1], Q.shape[1])
             # self.atts_model = build_atts_model(S.shape[1], X.shape[1], U.shape[1], Q.shape[1])
-        self.pass_model.fit([S,X,U, Q], y_pass)
+        self.pass_model.fit([S,X,U, Q], y_pass, epochs=10)
         # self.atts_model.fit([S,X,U, Q], y_atts)
     def predict(self, student_data):
         S,X,U = student_data

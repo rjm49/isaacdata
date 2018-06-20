@@ -155,9 +155,11 @@ def make_phybook_model(n_S, n_X, n_U, n_P):
     n_Voc = 10000
     n_Emb = 32
     # this is our input placeholder
-    input_S = Input(shape=(n_S,), name="s_input")
-    input_X = Input(shape=(n_X,), name="x_input")
-    input_U = Input(shape=(n_U,), name="u_input")
+    # input_S = Input(shape=(n_S,), name="s_input")
+    # input_X = Input(shape=(n_X,), name="x_input")
+    # input_U = Input(shape=(n_U,), name="u_input")
+
+    input = Input(shape=((n_S + n_X + n_U),), name="input")
 
     # e = Embedding(n_Voc, n_Emb, input_length=20)
     # lstm1 = LSTM(256, input_shape=(20,))
@@ -169,10 +171,10 @@ def make_phybook_model(n_S, n_X, n_U, n_P):
     # i_X = Dense(200, activation='relu')(input_X)
     # i_U = Dense(200, activation='relu')(input_U)
 
-    hidden = Dense(w, activation='relu')(concatenate([input_S, input_X, input_U]))
-    # hidden = Dropout(.5)(hidden)
-
-    # hidden = Dense((w+n_P)//2, activation='relu')(hidden)
+    hidden = Dense(w, activation='relu')(input) #(concatenate([input_S, input_X, input_U]))
+    hidden = Dropout(.5)(hidden)
+    hidden = Dense((w+n_P)//2, activation='relu')(hidden)
+    hidden = Dropout(.5)(hidden)
 
     # decode_test = Dense(n_Q, activation="sigmoid", name="decode_test")(hidden)
     # hidden = Dense(w, activation='relu')(hidden)
@@ -206,7 +208,7 @@ def make_phybook_model(n_S, n_X, n_U, n_P):
 
     o = Adam()
 
-    m = Model(inputs=[input_S,input_X, input_U], outputs=next_pg )
+    m = Model(inputs=input, outputs=next_pg )
     m.compile(optimizer=o, loss='categorical_crossentropy', metrics=['acc'])
 
     m.summary()
@@ -339,14 +341,20 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
 
             gc.collect()
 
-            model.fit([S,X,U], y, epochs=n_epochs, shuffle=True, batch_size=32, callbacks=[es]) #, class_weight=weights)
+            print(S.shape)
+            inp = numpy.concatenate((S,X,U), axis=1)
+            print(inp.shape)
+            sc = StandardScaler()
+            inp = sc.fit_transform(inp)
 
-            scores = model.evaluate([S,X,U], y)
+            model.fit(inp, y, epochs=n_epochs, shuffle=True, batch_size=32, callbacks=[es]) #, class_weight=weights)
+
+            scores = model.evaluate(inp, y)
             print(scores[0], scores[1])
 
             X=y=yc=lv = None
 
-    return model, ylb, qlist #, sscaler, levscaler, volscaler
+    return model, ylb, qlist, sc #, sscaler, levscaler, volscaler
 
 
 # def get_top_k_hot(raw, k): # TODO clean up
@@ -448,7 +456,7 @@ def save_class_report_card(ailist, S, U, X, y, y_preds, awgt, slist, qhist, ylb)
         f.write("{},{},{:0.1f},{},{},{},{},{}\n".format(psi, int(10*s[0])/10.0, s[1]/30.44, numpy.sum(x), numpy.sum((u>0)), tabu, big5, last5))
     f.close()
 
-def evaluate_phybook_loss(tt, model, ylb, clb, concept_map, topic_map, qid_override=None): #, sscaler,levscaler,volscaler): #, test_meta):
+def evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map, qid_override=None): #, sscaler,levscaler,volscaler): #, test_meta):
     print("ready to evaluate...")
     num_direct_hits =0
     errs = 0
@@ -468,7 +476,11 @@ def evaluate_phybook_loss(tt, model, ylb, clb, concept_map, topic_map, qid_overr
         X = numpy.array(X) # Xperience is a float vector (due to fade)
         U = numpy.array(U) #success is -1,0,1
         y = numpy.array(y) # string vector
-        y_preds = model.predict([S,X,U], verbose=True)
+
+        inp = numpy.concatenate((S,X,U), axis=1)
+        inp = sc.transform(inp)
+        y_preds = model.predict(inp, verbose=True)
+
         #convert predictions to recommendations here
         print("Preds done")
         # print(y_preds)
@@ -604,7 +616,7 @@ def filter_assignments(assignments, book_only):
     print(assignments.shape)
     return assignments
 
-
+page_list = []
 if __name__ == "__main__":
     # tracemalloc.start()
     print("Initialising deep learning HWGen....")
@@ -618,6 +630,7 @@ if __name__ == "__main__":
     for thing in meta_df.iterrows():
         thing = thing[1]
         k = thing["URL:"].split("/")[-1]
+        page_list.append(k)
         sft = "/".join((thing["Subject"],thing["Field"],thing["Topic"]))
         concepts = thing["Related Concepts"].split(",")
         concept_map[k] = concepts
@@ -637,9 +650,9 @@ if __name__ == "__main__":
     #
     do_train = True
     do_testing = True
-    frisch_backen = True
-    ass_n = 2500
-    split = 50
+    frisch_backen = False
+    ass_n = 25
+    split = 5
     n_macroepochs = 1
     n_epochs = 100
 
@@ -661,7 +674,7 @@ if __name__ == "__main__":
     # frac = 1 if ass_n <= 0 else (ass_n / assignments.shape[0])
     # frac = min(1.0, frac)
     ass_n = assignments.shape[0] if (ass_n<=0) else ass_n
-    assignments = assignments.sample(n=ass_n, random_state=666)
+    # assignments = assignments.sample(n=ass_n, random_state=666)
     # print(assignments["id"][0:10])
     assignments = assignments[0:ass_n]
     tr = assignments[0:(ass_n - split)]
@@ -687,20 +700,20 @@ if __name__ == "__main__":
 
     if do_train:
         print("training")
-        model, ylb, qlist = train_deep_model(tr, n_macroepochs, n_epochs, concept_map=concept_map, pid_override=pid_override, bake_fresh=frisch_backen)
+        model, ylb, qlist, sc = train_deep_model(tr, n_macroepochs, n_epochs, concept_map=concept_map, pid_override=pid_override, bake_fresh=frisch_backen)
         print("...deleted original X,y")
         model.save(base + 'hwg_model.hd5')
-        joblib.dump((ylb, qlist), base + 'hwg_mlb.pkl')
+        joblib.dump((ylb, qlist, sc), base + 'hwg_mlb.pkl')
         # joblib.dump((sscaler,levscaler,volscaler), base + 'hwg_scaler.pkl')
 
-    input("goedel")
+    input("go")
 
     if do_testing:
         print("testing")
         if model is None:
             model = load_model(base + "hwg_model.hd5")
-            (ylb, qlist) = joblib.load(base + 'hwg_mlb.pkl')
+            (ylb, qlist, sc) = joblib.load(base + 'hwg_mlb.pkl')
             #(sscaler,levscaler,volscaler) = joblib.load(base + 'hwg_scaler.pkl')
         # evaluate_predictions(tt, model, scaler, sscaler)
-        evaluate_phybook_loss(tt, model, ylb, None, concept_map, topic_map, qid_override=qlist) #, sscaler,levscaler,volscaler)
+        evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map, qid_override=qlist) #, sscaler,levscaler,volscaler)
         print("DEEP testing done")

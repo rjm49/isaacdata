@@ -44,15 +44,15 @@ def build_dob_cache(dob_cache, assts):
             if psi not in dob_cache:
                 # print("age gen...")
                 age_df = get_age_df(ts, group_df)
-                age_df["dob"] = pandas.to_datetime(age_df["dob"])
+                # age_df["dob"] = pandas.to_datetime(age_df["dob"])
                 # age = age_df.loc[psi, "age"]
                 for psi_inner in students:
-                    dob = age_df.loc[psi,"dob"]
+                    dob = age_df.loc[psi_inner,"dob"]
                     # print(type(dob))
-                    if not isinstance(dob, Timestamp):
-                        dob_cache[psi_inner] = None
-                    else:
+                    if isinstance(dob, Timestamp):
                         dob_cache[psi_inner] = dob
+                    else:
+                        dob_cache[psi_inner] = None
     return dob_cache
 
 
@@ -240,16 +240,15 @@ def gen_semi_static(psi, dob_cache, ts_list):
     # if raw_attempts.empty:
     #     print("student {} has no S attempts".format(psi))
     #     return []
+    dob = None
     for ix,ts in enumerate(sorted(ts_list)):
-        age=None
+        age=0
         xp_atts = 0
         sx = 0
         days = 1.0
         attempts = raw_attempts[raw_attempts["timestamp"] < ts]
         dob = dob_cache[psi]
-        if dob is None:
-            age = 0
-        else:
+        if dob is not None:
             age = (ts - dob).days / 365.242
         # if (not isinstance(age,float)) or (age>=100) or (age<10):
         #     age = 16.9

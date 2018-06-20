@@ -80,10 +80,11 @@ def main():
     pass_list = []
     atts_list = []
 
-    i=0
-    for u in user_list[0:1000]:
-        i += 1
-        print(i)
+    i_users = 0
+    n_users = 50
+    for u in user_list[0:n_users]:
+        i_users += 1
+        print(i_users)
         attempts = get_attempts_from_db(u)
         ts_list = list(attempts["timestamp"])
         # S_list = gen_semi_static()
@@ -94,7 +95,7 @@ def main():
         S_list += [numpy.zeros(1) for t in tX]
         pass_list += list(attempts["correct"]==True)
         atts_list += [numpy.ones(1) for t in tX]
-        if (len(X_list) > 10000) or (i==1000):
+        if (len(X_list) > 10000) or (i_users==n_users):
             S_list = numpy.array(S_list)
             X_list = numpy.array(X_list)
             U_list = numpy.array(U_list)
@@ -108,6 +109,23 @@ def main():
             Qv_list = []
             pass_list = []
             atts_list = []
+
+    for u in user_list[n_users:2*n_users]:
+        attempts = get_attempts_from_db(u)
+        ts_list = list(attempts["timestamp"])
+        delta_x = gen_experience(u, ts_list)
+        X_list += delta_x
+        U_list += gen_success(u, ts_list)
+        Qv_list += encode_q_vectors(attempts)
+        S_list += [numpy.zeros(1) for t in delta_x]
+        pass_list += list(attempts["correct"] == True)
+    S_list = numpy.array(S_list)
+    X_list = numpy.array(X_list)
+    U_list = numpy.array(U_list)
+    Qv_list = numpy.array(Qv_list)
+    pass_list = numpy.array(pass_list)
+    metrics = zpdp.pass_model.evaluate([S_list,X_list,U_list,Qv_list], pass_list)
+    print(metrics)
 
 if __name__=="__main__":
     main()
