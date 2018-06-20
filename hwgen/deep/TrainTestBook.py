@@ -132,15 +132,15 @@ def make_phybook_model(n_S, n_X, n_U, n_A, n_P):
 
     # w = 1024 # best was 256
     # w = (n_S + n_X + n_P)//2
-    w = 1024
+    w = 5000
 
     # i_X = Dense(200, activation='relu')(input_X)
     # i_U = Dense(200, activation='relu')(input_U)
 
     hidden = Dense(w, activation='relu')(input)  # (concatenate([input_S, input_X, input_U]))
-    hidden = Dropout(.5)(hidden)
-    hidden = Dense((w + n_P) // 2, activation='relu')(hidden)
-    hidden = Dropout(.5)(hidden)
+    # hidden = Dropout(.5)(hidden)
+    # hidden = Dense((w + n_P) // 2, activation='relu')(hidden)
+    # hidden = Dropout(.5)(hidden)
 
     # decode_test = Dense(n_Q, activation="sigmoid", name="decode_test")(hidden)
     # hidden = Dense(w, activation='relu')(hidden)
@@ -186,7 +186,8 @@ gb_qmap = make_gb_question_map()
 numpy.set_printoptions(threshold=numpy.nan)
 
 
-def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_override=None, bake_fresh=False, oac=None):
+def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_override=None, bake_fresh=False,
+                     oac=None):
     model = None
 
     concept_list = list(set().union(*concept_map.values()))
@@ -316,7 +317,7 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
             sc = StandardScaler()
             inp = sc.fit_transform(inp)
 
-            model.fit(inp, y, epochs=n_epochs, shuffle=True, batch_size=32, callbacks=[es])  # , class_weight=weights)
+            model.fit(inp, y, epochs=n_epochs, shuffle=False, batch_size=32, callbacks=[es])  # , class_weight=weights)
 
             scores = model.evaluate(inp, y)
             print(scores[0], scores[1])
@@ -628,8 +629,8 @@ if __name__ == "__main__":
     do_train = True
     do_testing = True
     frisch_backen = True
-    ass_n = 2050
-    split = 50
+    ass_n = 25
+    split = 5
     n_macroepochs = 1
     n_epochs = 100
 
@@ -650,13 +651,14 @@ if __name__ == "__main__":
     ass_n = assignments.shape[0] if (ass_n <= 0) else ass_n
     assignments = assignments[0:ass_n]
 
-    open_asst_cache = build_oa_cache(assignments,gb_qmap)
+    # TODO it would be nicer to build this inside the generator object, but currently this is the only place where
+    # the full assignment set is available
+    open_asst_cache = build_oa_cache(assignments, gb_qmap)
 
     assignments = assignments.sample(n=ass_n, random_state=666)
     # print(assignments["id"][0:10])
     tr = assignments[0:(ass_n - split)]
     tt = assignments[-split:]
-
 
     gc.collect()
     print("Split complete!")
@@ -665,7 +667,8 @@ if __name__ == "__main__":
     if do_train:
         print("training")
         model, ylb, qlist, sc = train_deep_model(tr, n_macroepochs, n_epochs, concept_map=concept_map,
-                                                 pid_override=pid_override, bake_fresh=frisch_backen, oac=open_asst_cache)
+                                                 pid_override=pid_override, bake_fresh=frisch_backen,
+                                                 oac=open_asst_cache)
         print("...deleted original X,y")
         model.save(base + 'hwg_model.hd5')
         joblib.dump((ylb, qlist, sc), base + 'hwg_mlb.pkl')

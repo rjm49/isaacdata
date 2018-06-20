@@ -176,10 +176,13 @@ class hwgengen2:
                     print("s..")
                     s_psi_list, ts_clipped = gen_semi_static(psi, self.dob_cache, ts_list)
                     print("x..")
+                    # x_psi_list = [[0] for t in ts_clipped]
                     x_psi_list = gen_experience(psi, ts_list)
                     print("u..")
+                    # u_psi_list = [ numpy.zeros(len(all_qids)) for t in ts_clipped]
                     u_psi_list = gen_success(psi, ts_list)
                     print("a..")
+                    # a_psi_list = [ [0] for t in ts_clipped] #TODO reactivate assignment tracking
                     a_psi_list =[ self.open_assignment_cache[t][psi] for t in ts_clipped ]
                     print("done")
                     for ts,s_psi,x_psi,u_psi,a_psi in zip(ts_clipped,s_psi_list,x_psi_list, u_psi_list, a_psi_list):
