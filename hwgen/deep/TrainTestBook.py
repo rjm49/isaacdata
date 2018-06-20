@@ -114,43 +114,6 @@ def entropy(lizt):
     entropy = - sum([p * math.log(p) / math.log(2.0) for p in prob])
     return entropy
 
-
-def dummy_generator(assts,batch_size=512, pid_override=None):
-    b = 0 # batch counter
-    S = []
-    X= []
-    lenX = 1024 #len(assts)
-    y = []
-    y_cs = []
-    y_ts = []
-    y_lv = []
-    y_v = []
-    emcons = 0
-    n=1
-    for i in range(lenX):
-        if i % 2 == 0:
-            hx = "ch_j_p4"
-            X.append([1,0])
-            y.append([hx])
-        else:
-            hx = "ch_b_p5"
-            X.append([0,1])
-            y.append([hx])
-        n+=1
-
-        if (batch_size>0) and (n % batch_size == 0):
-            print("b={}, n samples = {} ({}/{}={:.1f}%)".format(b,len(X), n, lenX, (100.0*n/lenX)))
-            b+=1
-            yield S,X,y
-            S = []
-            X = []
-            y = []
-
-    print("out of assts")
-    print("empty concepts = {} of {}".format(emcons,lenX))
-    yield S, X, y
-
-
 def make_phybook_model(n_S, n_X, n_U, n_P):
     n_Voc = 10000
     n_Emb = 32
