@@ -1,6 +1,7 @@
 import gc
 import pickle
 import zlib
+from collections import OrderedDict
 
 import numpy
 import pandas
@@ -56,6 +57,69 @@ def build_dob_cache(dob_cache, assts):
     return dob_cache
 
 
+def build_oa_cache(asst_df, gb_q_map):
+    oa_cache = {} # hashtable to hold (timestamp -> student) mappings
+    psi_last_ts ={} # hashtable to hold (student -> last_assignment_timestamp) mappings, to retrieve previous state
+    for ix, ass in enumerate(asst_df.iterrows()):
+        id, ts, gb_id, gr_id = ass_extract(ass)
+        hexes = gb_q_map[gb_id]
+        students = list(get_student_list(gr_id)["user_id"])
+        # print("#{}: PREP: grp {} at {}".format(ix, gr_id, ts))
+        if ts not in oa_cache:
+            oa_cache[ts] = {}
+
+        for psi in students:
+            if psi not in oa_cache[ts]:
+                d = oa_cache[ts]
+                A = numpy.zeros(len(all_page_ids)) # create new vector and stash it
+                d[psi] = A
+                oa_cache[ts] = d
+                psi_last_ts[psi] = A #update so we can find A    again
+            else:
+                last_ts = psi_last_ts[psi]
+                last_A = oa_cache[ts][psi]
+                A = numpy.copy(last_A)
+                for hx in list(hexes):
+                    ix = all_page_ids.index(hx)
+                    A[ix] = 1 # this homework has been set!
+            oa_cache[ts][psi]=A
+            psi_last_ts[psi] = ts
+
+    return oa_cache
+
+
+def gen_experience(psi, ts_list, clip=True):
+    raw_attempts = get_attempts_from_db(psi)
+    X_list = []
+    # if raw_attempts.empty:
+    #     print("student {} has no X attempts".format(psi))
+    #     return X_list
+    first_non_empty = None
+    for ix,ts in enumerate(sorted(ts_list)):
+        X = numpy.zeros(len(all_qids))
+        attempts = raw_attempts[(raw_attempts["timestamp"] < ts)]
+        if not attempts.empty:
+            if first_non_empty is None:
+                first_non_empty = ix
+        hits = attempts["question_id"]
+        for qid in list(hits):
+            try:
+                qix = reverse_qid_dict[qid]
+            except:
+                print("UNK Qn ", qid)
+                continue
+            # X = numpy.max(X-.1,0)
+            # X -= 0.02  # reduce to zero in 50 moves
+            # X[X < 0] = 0.0 #bottom out at zero
+            # X[X > 0] += 0.01
+            X[qix] = 1
+            # print("birdvs iirdvs", numpy.median(X), numpy.sum(X))
+        # X_list.append(numpy.copy(X))
+        X_list.append(X)
+        # raw_attempts = raw_attempts[(raw_attempts["timestamp"] >= ts)]
+    if clip:
+        X_list = X_list[max(first_non_empty - 1, 0):] if (not first_non_empty is None) else X_list[-1:]
+    return X_list
 
 class hwgengen2:
     def __init__(self, assts, batch_size=512, pid_override=None, FRESSSH=False, qid_override=all_qids, return_qhist=False):
@@ -99,6 +163,7 @@ class hwgengen2:
         print("building dob_cache")
         empty_cache = {}
         self.dob_cache = build_dob_cache(empty_cache, assts)
+        self.open_assignment_cache = build_oa_cache(assts, self.gb_qmap)
         print(len(empty_cache))
         print("done")
 
@@ -139,17 +204,20 @@ class hwgengen2:
                     print("ts_list", ts_list)
                     print("s..")
                     s_psi_list = gen_semi_static(psi, self.dob_cache, ts_list)
-                    print("done")
                     print("x..")
                     x_psi_list = gen_experience(psi, ts_list)
-                    print("done")
                     print("u..")
                     u_psi_list = gen_success(psi, ts_list)
+
+                    a_psi_list =[]
+                    for ts in ts_list:
+                        a_psi_list.append(self.open_assignment_cache[ts][psi])
+
                     print("done")
-                    for ts,s_psi,x_psi,u_psi in zip(sorted(ts_list[-len(s_psi_list):]),s_psi_list,x_psi_list, u_psi_list):
+                    for ts,s_psi,x_psi,u_psi,a_psi in zip(sorted(ts_list[-len(s_psi_list):]),s_psi_list,x_psi_list, u_psi_list, a_psi_list):
                         loopvar = "prof_{}_{}".format(psi, ts)
-                        self.profiles[fn] = zlib.compress(pickle.dumps((s_psi, x_psi, u_psi)))
-                        print("created profile for ",loopvar, "xp=",numpy.sum(x_psi),"sxp=",numpy.sum(u_psi),"S=",s_psi)
+                        self.profiles[fn] = zlib.compress(pickle.dumps((s_psi, x_psi, u_psi, a_psi)))
+                        print("created profile for ",loopvar, "xp=",numpy.sum(x_psi),"sxp=",numpy.sum(u_psi),"S=",s_psi,"Ass/d=",numpy.sum(a_psi))
                 else:
                     print(".. {} f/cache".format(fn))
             if has_changed:
@@ -164,6 +232,7 @@ class hwgengen2:
         S = []
         X = []
         U = []
+        A=[]
         len_assts = len(self.assts)
         y = []
         awgt = []
@@ -187,21 +256,22 @@ class hwgengen2:
                     print(fn, "not in profiles, why??")
                     continue
 
-                tripat = pickle.loads(zlib.decompress(self.profiles[fn]))
-                if tripat is None:
-                    print(fn, "gives none")
+                quartet = pickle.loads(zlib.decompress(self.profiles[fn]))
+                if quartet is None:
+                    print(fn, "non das cacas.")
                 else:
-                    (s_psi, x_psi, u_psi) = tripat
+                    (s_psi, x_psi, u_psi, a_psi) = quartet
                     for hx in hexagons:
                         if self.pid_override is not None and hx not in self.pid_override:
                             print("pid problem", hx)
                             continue
 
-                        print(">>>", ts, psi, hx, s_psi, numpy.sum(x_psi), numpy.sum(u_psi))
+                        print(">>>", ts, psi, hx, s_psi, numpy.sum(x_psi), numpy.sum(u_psi), numpy.sum(a_psi))
 
                         S.append(s_psi)
                         X.append(x_psi)
                         U.append(u_psi)
+                        A.append(a_psi)
                         y.append([hx])
                         assids.append(i)
                         awgt.append([len(hexagons)])
@@ -219,11 +289,13 @@ class hwgengen2:
                     continue  # special frist nop case
                 print("b={}, n samples = {} ({}/{}={:.1f}%)".format(b, len(X), c, len_assts, (100.0 * c / len_assts)))
                 b += 1
-                yield S, X, U, y, assids, awgt, psi_list, qhist_list
+                yield S, X, U, A, y, assids, awgt, psi_list, qhist_list
                 last_i = i
                 S = []
                 X = []
                 U = []
+                A = []
+
                 y = []
                 assids = []
                 awgt = []
@@ -231,7 +303,7 @@ class hwgengen2:
                 qhist_list = []
                 gc.collect()
         print("out of assts")
-        yield S, X, U, y, assids, awgt, psi_list, qhist_list
+        yield S, X, U, A, y, assids, awgt, psi_list, qhist_list
 
 def gen_semi_static(psi, dob_cache, ts_list):
     S_list = []

@@ -35,7 +35,8 @@ import tracemalloc
 base = "../../../isaac_data_files/"
 
 n_users = -1
-cats, cat_lookup, all_qids, users, diffs, levels, cat_ixs, cat_page_lookup, lev_page_lookup, all_page_ids = init_objects(n_users)
+cats, cat_lookup, all_qids, users, diffs, levels, cat_ixs, cat_page_lookup, lev_page_lookup, all_page_ids = init_objects(
+    n_users)
 
 hwdf = get_meta_data()
 concepts_all = set()
@@ -49,61 +50,62 @@ for concepts_raw in hwdf["related_concepts"]:
             concepts_all.update(concepts)
 concepts_all = list(concepts_all)
 
-
-asst_fname = base+"assignments.pkl"
+asst_fname = base + "assignments.pkl"
 con_page_lookup = page_to_concept_map()
 
 
 def cluster_and_print(assts):
     xygen = hwgengen2(assts, batch_size=-1, FRESSSH=False)  # make generator object
-    for S,X,U,y,ai,awgt in xygen:
-            y_labs = numpy.array(y)
-            if (X==[]):
-                continue
-            S = numpy.array(S) # strings (labels)
-            X = numpy.array(X) #floats (fade)
-            U = numpy.array(U) #signed ints (-1,0,1)
-            print("S",S.shape)
-            print("X",X.shape)
-            print("U",U.shape)
-            assert y_labs.shape[1]==1 # each line shd have just one hex assignment
+    for S, X, U, y, ai, awgt in xygen:
+        y_labs = numpy.array(y)
+        if (X == []):
+            continue
+        S = numpy.array(S)  # strings (labels)
+        X = numpy.array(X)  # floats (fade)
+        U = numpy.array(U)  # signed ints (-1,0,1)
+        print("S", S.shape)
+        print("X", X.shape)
+        print("U", U.shape)
+        assert y_labs.shape[1] == 1  # each line shd have just one hex assignment
 
-            # c_labs = [concept_map[label[0]] for label in y_labs]
-            # c = clb.transform(c_labs)
-            # print(c_labs[0:10])
-            # print(c[0:10])
+        # c_labs = [concept_map[label[0]] for label in y_labs]
+        # c = clb.transform(c_labs)
+        # print(c_labs[0:10])
+        # print(c[0:10])
 
-            # try:
-            #     y = ylb.transform(y_labs) / awgt
-            # except:
-            #     y = ylb.fit_transform(y_labs) / awgt
-            # print(y_labs)
-            # input(y)
-            # input(awgt)
-            # assert numpy.sum(y[0]) == 1 # Each line should be one-hot
-            n = 5000
-            lab_set = list(numpy.unique(y_labs))
-            colors = numpy.array( [lab_set.index(l) for l in y_labs] )[0:n]
+        # try:
+        #     y = ylb.transform(y_labs) / awgt
+        # except:
+        #     y = ylb.fit_transform(y_labs) / awgt
+        # print(y_labs)
+        # input(y)
+        # input(awgt)
+        # assert numpy.sum(y[0]) == 1 # Each line should be one-hot
+        n = 5000
+        lab_set = list(numpy.unique(y_labs))
+        colors = numpy.array([lab_set.index(l) for l in y_labs])[0:n]
 
-            # calc_entropies(X,y_labs)
-            # exit()
+        # calc_entropies(X,y_labs)
+        # exit()
 
-            # pca = PCA(n_components=2)
-            tsne = TSNE(n_components=2)
-            # converted = pca.fit_transform(X) # convert experience matrix to points
-            converted = tsne.fit_transform(X[0:n])
+        # pca = PCA(n_components=2)
+        tsne = TSNE(n_components=2)
+        # converted = pca.fit_transform(X) # convert experience matrix to points
+        converted = tsne.fit_transform(X[0:n])
 
-            plt.scatter(x=converted[:,0], y=converted[:,1], c=colors, cmap=pylab.cm.cool)
-            plt.show()
+        plt.scatter(x=converted[:, 0], y=converted[:, 1], c=colors, cmap=pylab.cm.cool)
+        plt.show()
+
 
 def calc_entropies(X, y):
     d = defaultdict(list)
-    for x,lab in zip(X,y):
+    for x, lab in zip(X, y):
         d[str(lab)].append(x)
     for l in d:
         # print("calc for {}, len {}".format(l,len(d[l])))
         H = entropy(d[l])
         print("{}\t{}\t{}".format(l, H, len(d[l])))
+
 
 def entropy(lizt):
     "Calculates the Shannon entropy of a list"
@@ -114,7 +116,8 @@ def entropy(lizt):
     entropy = - sum([p * math.log(p) / math.log(2.0) for p in prob])
     return entropy
 
-def make_phybook_model(n_S, n_X, n_U, n_P):
+
+def make_phybook_model(n_S, n_X, n_U, n_A, n_P):
     n_Voc = 10000
     n_Emb = 32
     # this is our input placeholder
@@ -122,7 +125,7 @@ def make_phybook_model(n_S, n_X, n_U, n_P):
     # input_X = Input(shape=(n_X,), name="x_input")
     # input_U = Input(shape=(n_U,), name="u_input")
 
-    input = Input(shape=((n_S + n_X + n_U),), name="input")
+    input = Input(shape=((n_S + n_X + n_U + n_A),), name="input")
 
     # e = Embedding(n_Voc, n_Emb, input_length=20)
     # lstm1 = LSTM(256, input_shape=(20,))
@@ -134,9 +137,9 @@ def make_phybook_model(n_S, n_X, n_U, n_P):
     # i_X = Dense(200, activation='relu')(input_X)
     # i_U = Dense(200, activation='relu')(input_U)
 
-    hidden = Dense(w, activation='relu')(input) #(concatenate([input_S, input_X, input_U]))
+    hidden = Dense(w, activation='relu')(input)  # (concatenate([input_S, input_X, input_U]))
     hidden = Dropout(.5)(hidden)
-    hidden = Dense((w+n_P)//2, activation='relu')(hidden)
+    hidden = Dense((w + n_P) // 2, activation='relu')(hidden)
     hidden = Dropout(.5)(hidden)
 
     # decode_test = Dense(n_Q, activation="sigmoid", name="decode_test")(hidden)
@@ -152,7 +155,7 @@ def make_phybook_model(n_S, n_X, n_U, n_P):
     # hidden = Dense(1000, activation='relu')(hidden)
 
 
-    #EXTRA DEEP CHICAGO STYLE!
+    # EXTRA DEEP CHICAGO STYLE!
     # hidden = Dense(w, activation='relu')(hidden)
     # hidden = Dropout(.2)(hidden)
     # hidden = Dense(w, activation='relu')(hidden)
@@ -171,14 +174,18 @@ def make_phybook_model(n_S, n_X, n_U, n_P):
 
     o = Adam()
 
-    m = Model(inputs=input, outputs=next_pg )
+    m = Model(inputs=input, outputs=next_pg)
     m.compile(optimizer=o, loss='categorical_crossentropy', metrics=['acc'])
 
     m.summary()
     return m
 
 
+gb_qmap = make_gb_question_map()
+
 numpy.set_printoptions(threshold=numpy.nan)
+
+
 def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_override=None, bake_fresh=False):
     model = None
 
@@ -192,8 +199,8 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
     qlist = pid_override
     hex_counter = Counter()
     tot = 0
-    gb_qmap = make_gb_question_map()
-    for i,ass in enumerate(tr.iterrows()):
+
+    for i, ass in enumerate(tr.iterrows()):
         gb_id = ass[1]["gameboard_id"]
         gr_id = ass[1]["group_id"]
 
@@ -202,14 +209,14 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
         for psi in students:
             for hx in hexagons:
                 if hx not in qlist:
-                    print(hx," not in qlist")
+                    print(hx, " not in qlist")
                     qlist.append(hx)
                 yship.append(hx)
-                hex_counter[hx]+=1
+                hex_counter[hx] += 1
                 tot += 1
 
     # yship = list(concept_map.keys()) +yship
-    ylb = LabelBinarizer() #(classes=qlist)
+    ylb = LabelBinarizer()  # (classes=qlist)
     qlist = numpy.unique(yship)
     ylb.fit(qlist)
     # ylb.classes_ = yship  # start by fitting the binariser to the shortlist of book qns
@@ -225,15 +232,16 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
 
     weights = {}
     class_wgt = compute_class_weight('balanced', ylb.classes_, yship)
-    for clix, (cls, wgt) in enumerate(zip(ylb.classes_,class_wgt)):
-        print(clix,cls,wgt)
+    for clix, (cls, wgt) in enumerate(zip(ylb.classes_, class_wgt)):
+        print(clix, cls, wgt)
         weights[clix] = wgt
 
     nb_epoch = n_macroepochs
     for e in range(nb_epoch):
-        xygen = hwgengen2(tr, batch_size=-1, FRESSSH=bake_fresh, qid_override=qlist, return_qhist=False)  # make generator object
+        xygen = hwgengen2(tr, batch_size=-1, FRESSSH=bake_fresh, qid_override=qlist,
+                          return_qhist=False)  # make generator object
         print("macroepoch %d of %d" % (e, nb_epoch))
-        for S,X,U,y,ai,awgt,_,_ in xygen:
+        for S, X, U, A, y, ai, awgt, _, _ in xygen:
 
             # if False:
             #     for aie, s, x, u, t in zip(ai, S, X, U, y):
@@ -248,15 +256,16 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
             # exit()
 
             y_labs = numpy.array(y)
-            if (X==[]):
+            if (X == []):
                 continue
-            S = numpy.array(S) # strings (labels)
-            X = numpy.array(X) #floats (fade)
-            U = numpy.array(U) #signed ints (-1,0,1)
+            S = numpy.array(S)  # strings (labels)
+            X = numpy.array(X)  # floats (fade)
+            U = numpy.array(U)  # signed ints (-1,0,1)
+            A = numpy.array(A)
             # print("S",S.shape)
             # print("X",X.shape)
             # print("U",U.shape)
-            assert y_labs.shape[1]==1 # each line shd have just one hex assignment
+            assert y_labs.shape[1] == 1  # each line shd have just one hex assignment
 
             # c_labs = [concept_map[label[0]] for label in y_labs]
             # c = clb.transform(c_labs)
@@ -264,9 +273,9 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
             # print(c[0:10])
 
             try:
-                y = ylb.transform(y_labs) #/ awgt
+                y = ylb.transform(y_labs)  # / awgt
             except:
-                y = ylb.fit_transform(y_labs) #/ awgt
+                y = ylb.fit_transform(y_labs)  # / awgt
             # print(y_labs)
             # input(y)
             # input(awgt)
@@ -286,8 +295,8 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
                                          verbose=1, mode='auto')
             if model is None:
                 print("making model")
-                print(S.shape, X.shape, U.shape, y.shape)
-                model = make_phybook_model(S.shape[1], X.shape[1], U.shape[1], y.shape[1])
+                print(S.shape, X.shape, U.shape, A.shape, y.shape)
+                model = make_phybook_model(S.shape[1], X.shape[1], U.shape[1], A.shape[1], y.shape[1])
                 print("model made")
 
             # if len(y)<5:
@@ -305,19 +314,19 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
             gc.collect()
 
             print(S.shape)
-            inp = numpy.concatenate((S,X,U), axis=1)
+            inp = numpy.concatenate((S, X, U, A), axis=1)
             print(inp.shape)
             sc = StandardScaler()
             inp = sc.fit_transform(inp)
 
-            model.fit(inp, y, epochs=n_epochs, shuffle=True, batch_size=32, callbacks=[es]) #, class_weight=weights)
+            model.fit(inp, y, epochs=n_epochs, shuffle=True, batch_size=32, callbacks=[es])  # , class_weight=weights)
 
             scores = model.evaluate(inp, y)
             print(scores[0], scores[1])
 
-            X=y=yc=lv = None
+            X = y = yc = lv = None
 
-    return model, ylb, qlist, sc #, sscaler, levscaler, volscaler
+    return model, ylb, qlist, sc  # , sscaler, levscaler, volscaler
 
 
 # def get_top_k_hot(raw, k): # TODO clean up
@@ -350,14 +359,13 @@ def evaluate_hits_against_asst(ailist, y, max_y, y_preds, ylb):
     print(agg_pred.shape)
     print(y_preds.shape)
 
-
-    assert agg_pred.shape[0] == y_preds.shape[1] # shd have same num of columns as y_preds
+    assert agg_pred.shape[0] == y_preds.shape[1]  # shd have same num of columns as y_preds
     sortargs = numpy.argsort(agg_pred)
     sortargs = list(reversed(sortargs))
-    maxN = sortargs[0:N] # get the top N
+    maxN = sortargs[0:N]  # get the top N
     pred_qs = [ylb.classes_[ix] for ix in maxN]
-    print(true_qs," vs ",pred_qs)
-    score = len(true_qs.intersection(pred_qs))/N
+    print(true_qs, " vs ", pred_qs)
+    score = len(true_qs.intersection(pred_qs)) / N
     print("score = {}".format(score))
     return score
 
@@ -366,14 +374,15 @@ def get_top_subjs(x, ylb, n):
     top_topics = Counter()
     for ix in range(len(x)):
         v = x[ix]
-        if v!=0:
+        if v != 0:
             qid = all_qids[ix]
             # print(qid)
             cat = cat_lookup[qid]
             top_topics[cat] += 1
     return top_topics.most_common(n)
 
-def print_student_summary(ai, psi, s,x, ylb, clz, t, p, pr):
+
+def print_student_summary(ai, psi, s, x, ylb, clz, t, p, pr):
     top_subjs = get_top_subjs(x, ylb, 5)
     pid = None if clz is None else ylb.classes_[clz]
     xlevs = []
@@ -381,8 +390,10 @@ def print_student_summary(ai, psi, s,x, ylb, clz, t, p, pr):
         if el == 1:
             xlevs.append(levels[all_qids[ix]])
 
-    print("{}:{}\t{}|\t{}\t{}\t{}\t({})\t{}\t{}\t{}\t{}".format(ai, psi, pr, t, p, pid, clz, numpy.sum(x), s, numpy.mean(xlevs),
-                                                             top_subjs))
+    print("{}:{}\t{}|\t{}\t{}\t{}\t({})\t{}\t{}\t{}\t{}".format(ai, psi, pr, t, p, pid, clz, numpy.sum(x), s,
+                                                                numpy.mean(xlevs),
+                                                                top_subjs))
+
 
 def save_class_report_card(ailist, S, U, X, y, y_preds, awgt, slist, qhist, ylb):
     max_probs = y_preds.max(axis=1)
@@ -391,7 +402,7 @@ def save_class_report_card(ailist, S, U, X, y, y_preds, awgt, slist, qhist, ylb)
     for ai, s, u, x, t, p, pr, wgt, psi, qh in zip(ailist, S, U, X, y, max_labs, max_probs, awgt, slist, qhist):
         if fn_ai is None:
             fn_ai = str(ai)
-            f = open("report_cards/"+fn_ai+".csv","w")
+            f = open("report_cards/" + fn_ai + ".csv", "w")
             f.write("student,age,months_on_isaac,qns_tried,successes,hexes_done,top_5_topics,last_5_qns\n")
 
         tabu = []
@@ -401,50 +412,55 @@ def save_class_report_card(ailist, S, U, X, y, y_preds, awgt, slist, qhist, ylb)
                 page = label.split("|")[0]
                 if page not in tabu:
                     tabu.append(page)
-        if len(tabu)>0:
-            tabu = "\n".join(map(str,tabu))
+        if len(tabu) > 0:
+            tabu = "\n".join(map(str, tabu))
             tabu = '"{}"'.format(tabu)
 
         big5 = get_top_subjs(x, ylb, 5)
-        if len(big5)>0:
-            big5 = "\n".join(map(str,big5))
+        if len(big5) > 0:
+            big5 = "\n".join(map(str, big5))
             big5 = '"{}"'.format(big5)
-        if len(qh)>0:
-            ql,tl = zip(*qh)
+        if len(qh) > 0:
+            ql, tl = zip(*qh)
             last5 = [q for q in numpy.unique(ql)[-5:]]
             last5 = "\n".join(last5)
-            last5 = '"{}"'.format(last5) #wrap in quotes
+            last5 = '"{}"'.format(last5)  # wrap in quotes
         else:
             last5 = []
-        f.write("{},{},{:0.1f},{},{},{},{},{}\n".format(psi, int(10*s[0])/10.0, s[1]/30.44, numpy.sum(x), numpy.sum((u>0)), tabu, big5, last5))
+        f.write("{},{},{:0.1f},{},{},{},{},{}\n".format(psi, int(10 * s[0]) / 10.0, s[1] / 30.44, numpy.sum(x),
+                                                        numpy.sum((u > 0)), tabu, big5, last5))
     f.close()
 
-def evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map, qid_override=None): #, sscaler,levscaler,volscaler): #, test_meta):
+
+def evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map,
+                          qid_override=None):  # , sscaler,levscaler,volscaler): #, test_meta):
     print("ready to evaluate...")
-    num_direct_hits =0
+    num_direct_hits = 0
     errs = 0
-    num_chapter_hits =0
+    num_chapter_hits = 0
     ass_tot = 0
     num_cases = 1
     num_students = 0
-    test_gen = hwgengen2(tt, batch_size="assignment", FRESSSH=False, qid_override=qid_override, return_qhist=True) #batch_size = "group"
-    for S,X,U,y,ailist,awgt,slist,qhist in test_gen:
+    test_gen = hwgengen2(tt, batch_size="assignment", FRESSSH=False, qid_override=qid_override,
+                         return_qhist=True)  # batch_size = "group"
+    for S, X, U, A, y, ailist, awgt, slist, qhist in test_gen:
         print("batch")
 
-        psi_len = len(set(slist)) # <-- best direct hits we can get is one per student
+        psi_len = len(set(slist))  # <-- best direct hits we can get is one per student
 
         S = numpy.array(S)
-        if X==[]:
+        if X == []:
             continue
-        X = numpy.array(X) # Xperience is a float vector (due to fade)
-        U = numpy.array(U) #success is -1,0,1
-        y = numpy.array(y) # string vector
+        X = numpy.array(X)  # Xperience is 0|1
+        U = numpy.array(U)  # success is 0 or 1/n_atts
+        A = numpy.array(A)  # Previous assignments are 0|1
+        y = numpy.array(y)  # string vector
 
-        inp = numpy.concatenate((S,X,U), axis=1)
+        inp = numpy.concatenate((S, X, U, A), axis=1)
         inp = sc.transform(inp)
         y_preds = model.predict(inp, verbose=True)
 
-        #convert predictions to recommendations here
+        # convert predictions to recommendations here
         print("Preds done")
         # print(y_preds)
         # print(c_preds)
@@ -453,23 +469,24 @@ def evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map, qid_overri
         # sugg_c_labs = clb.inverse_transform(c_preds)
 
         print("inverting")
-        max_y = ylb.inverse_transform(y_preds) #shd give us a single output label for the best choice!
+        max_y = ylb.inverse_transform(y_preds)  # shd give us a single output label for the best choice!
         print("concating")
         y = numpy.concatenate(y)
 
-        ass_tot += evaluate_hits_against_asst(ailist,y, max_y, y_preds, ylb)
+        ass_tot += evaluate_hits_against_asst(ailist, y, max_y, y_preds, ylb)
 
-        num_students+=psi_len
+        num_students += psi_len
         save_class_report_card(ailist, S, U, X, y, y_preds, awgt, slist, qhist, ylb)
 
-        for ai, s,u,x, t,p, pr,clz,this_preds,w,psi in zip(ailist, S,U,X, y,max_y, y_preds.max(axis=1), y_preds.argmax(axis=1), y_preds, awgt, slist):
+        for ai, s, u, x, t, p, pr, clz, this_preds, w, psi in zip(ailist, S, U, X, y, max_y, y_preds.max(axis=1),
+                                                                  y_preds.argmax(axis=1), y_preds, awgt, slist):
             # if numpy.sum(x) < 20:
             #     continue
 
             sortargs = numpy.argsort(this_preds)
             # print(sortargs)
             sortargs = list(reversed(numpy.argsort(this_preds)))
-            #print(sortargs)
+            # print(sortargs)
             pred_labels = [ylb.classes_[ix] for ix in sortargs]
             pred_probas = list(reversed(numpy.sort(this_preds)))
             tabus = [u[ix] for ix in sortargs]
@@ -477,12 +494,11 @@ def evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map, qid_overri
             # print(p10)
             # print(t10)
 
-            print("STUDENT: {} (real is {})".format(psi,t))
+            print("STUDENT: {} (real is {})".format(psi, t))
             print(s)
-            print(numpy.sum((x>0)), numpy.sum((u>0)), 1.0/numpy.mean(u[u>0]))
+            print(numpy.sum((x > 0)), numpy.sum((u > 0)), 1.0 / numpy.mean(u[u > 0]))
             for i in range(5):
                 print("   {} {:.5f} {}".format(pred_labels[i], pred_probas[i], tabus[i]))
-
 
             # if(numpy.sum(t10)>0):
             #     input("")
@@ -498,7 +514,7 @@ def evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map, qid_overri
             # if(i > 0):
             #     input(("{}th arg".format(i),t,p))
 
-            if t==p:
+            if t == p:
                 num_direct_hits += 1
             #
             # if t != p:
@@ -527,10 +543,10 @@ def evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map, qid_overri
     asst_level_score = ass_tot / num_cases
     batch_score = num_direct_hits / num_cases
     print("direct hits: {} of {}: {}".format(num_direct_hits, num_cases, batch_score))
-    print("chapter hits: {} of {}: {}".format(num_chapter_hits, num_cases, num_chapter_hits/num_cases))
-    print("aggregated avg score = ",asst_level_score)
-    print("wgted error rate = ", (errs/num_cases))
-    print("student hits = ",(num_direct_hits/num_students))
+    print("chapter hits: {} of {}: {}".format(num_chapter_hits, num_cases, num_chapter_hits / num_cases))
+    print("aggregated avg score = ", asst_level_score)
+    print("wgted error rate = ", (errs / num_cases))
+    print("student hits = ", (num_direct_hits / num_students))
     # X_sums = numpy.array(X_sums).ravel()
     # print(X_sums)
     # X_sums = (X_sums==0)
@@ -539,17 +555,17 @@ def evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map, qid_overri
 
 
 def filter_assignments(assignments, book_only):
-    #query = "select id, gameboard_id, group_id, owner_user_id, creation_date from assignments order by creation_date asc"
-    assignments["include"]=True
+    # query = "select id, gameboard_id, group_id, owner_user_id, creation_date from assignments order by creation_date asc"
+    assignments["include"] = True
     print(assignments.shape)
     map = make_gb_question_map()
     meta = get_meta_data()
     for ix in range(assignments.shape[0]):
         include = True
-        gr_id = assignments.loc[ix,"group_id"]
+        gr_id = assignments.loc[ix, "group_id"]
 
         if book_only:
-            gb_id = assignments.loc[ix,"gameboard_id"]
+            gb_id = assignments.loc[ix, "gameboard_id"]
             hexes = map[gb_id]
             for hx in hexes:
                 hx = hx.split("|")[0]
@@ -579,6 +595,7 @@ def filter_assignments(assignments, book_only):
     print(assignments.shape)
     return assignments
 
+
 page_list = []
 if __name__ == "__main__":
     # tracemalloc.start()
@@ -589,12 +606,12 @@ if __name__ == "__main__":
     concept_map = {}
     topic_map = {}
     concept_list = []
-    meta_df = pandas.DataFrame.from_csv(base+"book_question_meta.csv")
+    meta_df = pandas.DataFrame.from_csv(base + "book_question_meta.csv")
     for thing in meta_df.iterrows():
         thing = thing[1]
         k = thing["URL:"].split("/")[-1]
         page_list.append(k)
-        sft = "/".join((thing["Subject"],thing["Field"],thing["Topic"]))
+        sft = "/".join((thing["Subject"], thing["Field"], thing["Topic"]))
         concepts = thing["Related Concepts"].split(",")
         concept_map[k] = concepts
         topic_map[k] = sft
@@ -613,15 +630,15 @@ if __name__ == "__main__":
     #
     do_train = True
     do_testing = True
-    frisch_backen = False
-    ass_n = 25
-    split = 5
+    frisch_backen = True
+    ass_n = 2050
+    split = 50
     n_macroepochs = 1
     n_epochs = 100
 
-    USE_CACHED_ASSGTS=True
-    SAVE_CACHED_ASSGTS=True
-    cache_fname=base+"cached_assgts.csv"
+    USE_CACHED_ASSGTS = True
+    SAVE_CACHED_ASSGTS = True
+    cache_fname = base + "cached_assgts.csv"
     if USE_CACHED_ASSGTS:
         assignments = pandas.DataFrame.from_csv(cache_fname)
     else:
@@ -629,15 +646,16 @@ if __name__ == "__main__":
         assignments = filter_assignments(assignments, book_only=True)
         if SAVE_CACHED_ASSGTS:
             assignments.to_csv(cache_fname)
-    #Now filter and split
-    assignments = assignments[assignments["include"]==True]
+    # Now filter and split
+    assignments = assignments[assignments["include"] == True]
     assignments["creation_date"] = pandas.to_datetime(assignments["creation_date"])
     # assignments = assignments[assignments["creation_date"] >=pandas.to_datetime("2016-01-01")]
 
     # frac = 1 if ass_n <= 0 else (ass_n / assignments.shape[0])
     # frac = min(1.0, frac)
-    ass_n = assignments.shape[0] if (ass_n<=0) else ass_n
-    # assignments = assignments.sample(n=ass_n, random_state=666)
+    ass_n = assignments.shape[0] if (ass_n <= 0) else ass_n
+
+    assignments = assignments.sample(n=ass_n, random_state=666)
     # print(assignments["id"][0:10])
     assignments = assignments[0:ass_n]
     tr = assignments[0:(ass_n - split)]
@@ -663,7 +681,8 @@ if __name__ == "__main__":
 
     if do_train:
         print("training")
-        model, ylb, qlist, sc = train_deep_model(tr, n_macroepochs, n_epochs, concept_map=concept_map, pid_override=pid_override, bake_fresh=frisch_backen)
+        model, ylb, qlist, sc = train_deep_model(tr, n_macroepochs, n_epochs, concept_map=concept_map,
+                                                 pid_override=pid_override, bake_fresh=frisch_backen)
         print("...deleted original X,y")
         model.save(base + 'hwg_model.hd5')
         joblib.dump((ylb, qlist, sc), base + 'hwg_mlb.pkl')
@@ -676,7 +695,8 @@ if __name__ == "__main__":
         if model is None:
             model = load_model(base + "hwg_model.hd5")
             (ylb, qlist, sc) = joblib.load(base + 'hwg_mlb.pkl')
-            #(sscaler,levscaler,volscaler) = joblib.load(base + 'hwg_scaler.pkl')
+            # (sscaler,levscaler,volscaler) = joblib.load(base + 'hwg_scaler.pkl')
         # evaluate_predictions(tt, model, scaler, sscaler)
-        evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map, qid_override=qlist) #, sscaler,levscaler,volscaler)
+        evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map,
+                              qid_override=qlist)  # , sscaler,levscaler,volscaler)
         print("DEEP testing done")
