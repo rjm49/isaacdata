@@ -122,7 +122,7 @@ def gen_experience(psi, ts_list, clip=True):
     return X_list
 
 class hwgengen2:
-    def __init__(self, assts, batch_size=512, pid_override=None, FRESSSH=False, qid_override=all_qids, return_qhist=False):
+    def __init__(self, assts, batch_size=512, pid_override=None, FRESSSH=False, qid_override=all_qids, return_qhist=False, oac=None):
         self.assts: pandas.DataFrame = assts
         self.assts.loc[:,'creation_date'] = pandas.to_datetime(assts['creation_date'])
 
@@ -132,6 +132,10 @@ class hwgengen2:
         self.pid_override=pid_override
         self.qid_override = qid_override
         self.return_qhist = return_qhist
+        if oac:
+            self.open_assignment_cache = oac
+        else:
+            self.open_assignment_cache = build_oa_cache(assts, self.gb_qmap)
 
         if not FRESSSH:
             print("APPEND mode")
