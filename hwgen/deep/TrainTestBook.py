@@ -192,9 +192,6 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
     concept_list = list(set().union(*concept_map.values()))
     print(concept_list)
 
-    clb = MultiLabelBinarizer(classes=concept_list)
-    # clb.fit(concept_list) # initialise the concept binariser too
-
     yship = []
     qlist = pid_override
     hex_counter = Counter()
@@ -649,10 +646,7 @@ if __name__ == "__main__":
     # Now filter and split
     assignments = assignments[assignments["include"] == True]
     assignments["creation_date"] = pandas.to_datetime(assignments["creation_date"])
-    # assignments = assignments[assignments["creation_date"] >=pandas.to_datetime("2016-01-01")]
 
-    # frac = 1 if ass_n <= 0 else (ass_n / assignments.shape[0])
-    # frac = min(1.0, frac)
     ass_n = assignments.shape[0] if (ass_n <= 0) else ass_n
     assignments = assignments[0:ass_n]
 
@@ -663,19 +657,6 @@ if __name__ == "__main__":
     tr = assignments[0:(ass_n - split)]
     tt = assignments[-split:]
 
-    # del assignments
-
-    # cluster_and_print(tr)
-    # exit()
-
-    # ass_list = []
-    # xygen = hwgengen.xy_generator(assignments, batch_size=1)  # make generator object
-    # for thing in xygen:
-    #     ass_list.append(thing)
-    # ass_list = random.shuffle(ass_list)
-    # sc = len(ass_list//ass_n)
-    # tr = assignments[0:-(sc*split)]
-    # tt = assignments[-(sc*split):]
 
     gc.collect()
     print("Split complete!")
@@ -697,8 +678,7 @@ if __name__ == "__main__":
         if model is None:
             model = load_model(base + "hwg_model.hd5")
             (ylb, qlist, sc) = joblib.load(base + 'hwg_mlb.pkl')
-            # (sscaler,levscaler,volscaler) = joblib.load(base + 'hwg_scaler.pkl')
-        # evaluate_predictions(tt, model, scaler, sscaler)
+
         evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map,
                               qid_override=qlist, oac=open_asst_cache)  # , sscaler,levscaler,volscaler)
         print("DEEP testing done")
