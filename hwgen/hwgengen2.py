@@ -58,33 +58,33 @@ def build_dob_cache(dob_cache, assts):
 
 
 def build_oa_cache(asst_df, gb_q_map):
+    #TODO assumes asst_df is complete, and ordered
     oa_cache = {} # hashtable to hold (timestamp -> student) mappings
-    psi_last_ts ={} # hashtable to hold (student -> last_assignment_timestamp) mappings, to retrieve previous state
+    psi_last_A ={} # hashtable to hold (student -> last_assignment_timestamp) mappings, to retrieve previous state
+    psi_last_hexes = {}
     for ix, ass in enumerate(asst_df.iterrows()):
         id, ts, gb_id, gr_id = ass_extract(ass)
-        hexes = gb_q_map[gb_id]
+        hexes = list(gb_q_map[gb_id])
         students = list(get_student_list(gr_id)["user_id"])
         # print("#{}: PREP: grp {} at {}".format(ix, gr_id, ts))
         if ts not in oa_cache:
             oa_cache[ts] = {}
 
         for psi in students:
-            if psi not in oa_cache[ts]:
-                d = oa_cache[ts]
+            if psi not in psi_last_A:
                 A = numpy.zeros(len(all_page_ids)) # create new vector and stash it
+                d = oa_cache[ts]
                 d[psi] = A
                 oa_cache[ts] = d
-                psi_last_ts[psi] = A #update so we can find A    again
             else:
-                last_ts = psi_last_ts[psi]
-                last_A = oa_cache[ts][psi]
-                A = numpy.copy(last_A)
-                for hx in list(hexes):
+                A = numpy.copy(psi_last_A[psi])
+                updates = psi_last_hexes[psi]
+                for hx in updates:
                     ix = all_page_ids.index(hx)
                     A[ix] = 1 # this homework has been set!
-            oa_cache[ts][psi]=A
-            psi_last_ts[psi] = ts
-
+                oa_cache[ts][psi] = A
+            psi_last_A[psi] = A
+            psi_last_hexes[psi] = hexes
     return oa_cache
 
 
