@@ -206,18 +206,15 @@ class hwgengen2:
                     ts_list = self.ts_cache[psi]
                     print("ts_list", ts_list)
                     print("s..")
-                    s_psi_list = gen_semi_static(psi, self.dob_cache, ts_list)
+                    s_psi_list, ts_clipped = gen_semi_static(psi, self.dob_cache, ts_list)
                     print("x..")
                     x_psi_list = gen_experience(psi, ts_list)
                     print("u..")
                     u_psi_list = gen_success(psi, ts_list)
-
-                    a_psi_list =[]
-                    for ts in ts_list:
-                        a_psi_list.append(self.open_assignment_cache[ts][psi])
-
+                    print("a..")
+                    a_psi_list =[ self.open_assignment_cache[t][psi] for t in ts_clipped ]
                     print("done")
-                    for ts,s_psi,x_psi,u_psi,a_psi in zip(sorted(ts_list[-len(s_psi_list):]),s_psi_list,x_psi_list, u_psi_list, a_psi_list):
+                    for ts,s_psi,x_psi,u_psi,a_psi in zip(ts_clipped,s_psi_list,x_psi_list, u_psi_list, a_psi_list):
                         loopvar = "prof_{}_{}".format(psi, ts)
                         self.profiles[fn] = zlib.compress(pickle.dumps((s_psi, x_psi, u_psi, a_psi)))
                         print("created profile for ",loopvar, "xp=",numpy.sum(x_psi),"sxp=",numpy.sum(u_psi),"S=",s_psi,"Ass/d=",numpy.sum(a_psi))
@@ -316,7 +313,8 @@ def gen_semi_static(psi, dob_cache, ts_list):
     #     print("student {} has no S attempts".format(psi))
     #     return []
     dob = None
-    for ix,ts in enumerate(sorted(ts_list)):
+    ts_list = sorted(ts_list)
+    for ix,ts in enumerate(ts_list):
         age=0
         xp_atts = 0
         sx = 0
@@ -348,7 +346,8 @@ def gen_semi_static(psi, dob_cache, ts_list):
             # S_list.append( numpy.array([age, days, xp_runs, xp_atts, (xp_atts/days), (xp_runs/days), (sx/xp_atts if xp_atts else 0)]) ) #,rat,xp/days,sx/days]))
         S_list.append(numpy.array([age, days, (xp_atts/days), (sx/xp_atts if xp_atts else 0)]))
     S_list = S_list[max(first_non_empty - 1, 0):] if (not first_non_empty is None) else S_list[-1:]
-    return S_list
+    ts_list = ts_list[max(first_non_empty - 1, 0):] if (not first_non_empty is None) else ts_list[-1:]
+    return S_list, ts_list
 
 def gen_experience(psi, ts_list, clip=True):
     raw_attempts = get_attempts_from_db(psi)
@@ -391,20 +390,23 @@ def gen_qhist(psi, ts):
     qhist = list( zip(l1,l2) )
     return qhist
 
-def gen_success(psi,ts_list, clip=True):
+def gen_success(psi,ts_list):
     raw_attempts = get_attempts_from_db(psi)
     U_list = []
-    # if raw_attempts.empty:
-    #     print("student {} has no X attempts".format(psi))
-    #     return U_list
 
     first_non_empty = None
-    for ix,ts in enumerate(sorted(ts_list)):
-        U = numpy.zeros(len(all_qids))
+    ts_list = sorted(ts_list)
+    for ix,ts in enumerate(ts_list):
         attempts = raw_attempts[(raw_attempts["timestamp"] < ts)]
         if not attempts.empty:
-            if first_non_empty is None:
-                first_non_empty = ix
+            first_non_empty = ix
+            break
+
+    start_at = -1 if (first_non_empty is None) else max(first_non_empty-1,0)
+    ts_list = ts_list[start_at:]
+    U = numpy.zeros(len(all_qids))
+    for ts in ts_list:
+        attempts = raw_attempts[(raw_attempts["timestamp"] < ts)]
         hits = attempts[(attempts["correct"] == True)]
         hits = hits["question_id"]
         for qid in list(hits):
@@ -413,11 +415,9 @@ def gen_success(psi,ts_list, clip=True):
             except:
                 print("UNK Qn ", qid)
                 continue
-            attct = len(attempts[attempts["question_id"]==qid])
-            U[qix] = (1.0/attct)
-        U_list.append(U)
-        #U_list.append(numpy.copy(U))
-        #raw_attempts = raw_attempts[(raw_attempts["timestamp"] >= ts)]
-    if clip:
-        U_list = U_list[max(first_non_empty - 1, 0):] if (not first_non_empty is None) else U_list[-1:]
+            attct = (attempts["question_id"]==qid).sum()
+            U[qix] = 1.0/attct
+        # U_list.append(U)
+        U_list.append(numpy.copy(U))
+        raw_attempts = raw_attempts[(raw_attempts["timestamp"] >= ts)]
     return U_list
