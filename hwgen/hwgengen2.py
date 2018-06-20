@@ -88,38 +88,6 @@ def build_oa_cache(asst_df, gb_q_map):
     return oa_cache
 
 
-def gen_experience(psi, ts_list, clip=True):
-    raw_attempts = get_attempts_from_db(psi)
-    X_list = []
-    # if raw_attempts.empty:
-    #     print("student {} has no X attempts".format(psi))
-    #     return X_list
-    first_non_empty = None
-    for ix,ts in enumerate(sorted(ts_list)):
-        X = numpy.zeros(len(all_qids))
-        attempts = raw_attempts[(raw_attempts["timestamp"] < ts)]
-        if not attempts.empty:
-            if first_non_empty is None:
-                first_non_empty = ix
-        hits = attempts["question_id"]
-        for qid in list(hits):
-            try:
-                qix = reverse_qid_dict[qid]
-            except:
-                print("UNK Qn ", qid)
-                continue
-            # X = numpy.max(X-.1,0)
-            # X -= 0.02  # reduce to zero in 50 moves
-            # X[X < 0] = 0.0 #bottom out at zero
-            # X[X > 0] += 0.01
-            X[qix] = 1
-            # print("birdvs iirdvs", numpy.median(X), numpy.sum(X))
-        # X_list.append(numpy.copy(X))
-        X_list.append(X)
-        # raw_attempts = raw_attempts[(raw_attempts["timestamp"] >= ts)]
-    if clip:
-        X_list = X_list[max(first_non_empty - 1, 0):] if (not first_non_empty is None) else X_list[-1:]
-    return X_list
 
 class hwgengen2:
     def __init__(self, assts, batch_size=512, pid_override=None, FRESSSH=False, qid_override=all_qids, return_qhist=False, oac=None):
@@ -349,7 +317,7 @@ def gen_semi_static(psi, dob_cache, ts_list):
     ts_list = ts_list[max(first_non_empty - 1, 0):] if (not first_non_empty is None) else ts_list[-1:]
     return S_list, ts_list
 
-def gen_experience(psi, ts_list, clip=True):
+def gen_experience(psi, ts_list):
     raw_attempts = get_attempts_from_db(psi)
     X_list = []
     # if raw_attempts.empty:
@@ -378,8 +346,7 @@ def gen_experience(psi, ts_list, clip=True):
         # X_list.append(numpy.copy(X))
         X_list.append(X)
         # raw_attempts = raw_attempts[(raw_attempts["timestamp"] >= ts)]
-    if clip:
-        X_list = X_list[max(first_non_empty - 1, 0):] if (not first_non_empty is None) else X_list[-1:]
+    X_list = X_list[max(first_non_empty - 1, 0):] if (not first_non_empty is None) else X_list[-1:]
     return X_list
 
 def gen_qhist(psi, ts):
@@ -415,8 +382,8 @@ def gen_success(psi,ts_list):
             except:
                 print("UNK Qn ", qid)
                 continue
-            attct = (attempts["question_id"]==qid).sum()
-            U[qix] = 1.0/attct
+            #attct = (attempts["question_id"]==qid).sum()
+            U[qix] = 1.0#/attct
         # U_list.append(U)
         U_list.append(numpy.copy(U))
         raw_attempts = raw_attempts[(raw_attempts["timestamp"] >= ts)]
