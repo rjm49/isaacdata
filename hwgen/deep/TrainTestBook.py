@@ -25,7 +25,7 @@ from sklearn.utils import compute_class_weight
 from hwgen.common import init_objects, get_meta_data, get_n_hot, split_assts, get_page_concepts, jaccard, \
     get_all_assignments, get_student_list, make_gb_question_map
 from hwgen.concept_extract import concept_extract, page_to_concept_map
-from hwgen.hwgengen2 import hwgengen2, gen_qhist
+from hwgen.hwgengen2 import hwgengen2, gen_qhist, build_oa_cache
 from hwgen.profiler import get_attempts_from_db
 
 from matplotlib import pyplot as plt
@@ -186,7 +186,7 @@ gb_qmap = make_gb_question_map()
 numpy.set_printoptions(threshold=numpy.nan)
 
 
-def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_override=None, bake_fresh=False):
+def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_override=None, bake_fresh=False, oac=None):
     model = None
 
     concept_list = list(set().union(*concept_map.values()))
@@ -239,7 +239,7 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
     nb_epoch = n_macroepochs
     for e in range(nb_epoch):
         xygen = hwgengen2(tr, batch_size=-1, FRESSSH=bake_fresh, qid_override=qlist,
-                          return_qhist=False)  # make generator object
+                          return_qhist=False, oac=oac)  # make generator object
         print("macroepoch %d of %d" % (e, nb_epoch))
         for S, X, U, A, y, ai, awgt, _, _ in xygen:
 
@@ -433,7 +433,7 @@ def save_class_report_card(ailist, S, U, X, y, y_preds, awgt, slist, qhist, ylb)
 
 
 def evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map,
-                          qid_override=None):  # , sscaler,levscaler,volscaler): #, test_meta):
+                          qid_override=None, oac=None):  # , sscaler,levscaler,volscaler): #, test_meta):
     print("ready to evaluate...")
     num_direct_hits = 0
     errs = 0
@@ -442,7 +442,7 @@ def evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map,
     num_cases = 1
     num_students = 0
     test_gen = hwgengen2(tt, batch_size="assignment", FRESSSH=False, qid_override=qid_override,
-                         return_qhist=True)  # batch_size = "group"
+                         return_qhist=True, oac=oac)  # batch_size = "group"
     for S, X, U, A, y, ailist, awgt, slist, qhist in test_gen:
         print("batch")
 
@@ -654,10 +654,12 @@ if __name__ == "__main__":
     # frac = 1 if ass_n <= 0 else (ass_n / assignments.shape[0])
     # frac = min(1.0, frac)
     ass_n = assignments.shape[0] if (ass_n <= 0) else ass_n
+    assignments = assignments[0:ass_n]
+
+    open_asst_cache = build_oa_cache(assignments,gb_qmap)
 
     assignments = assignments.sample(n=ass_n, random_state=666)
     # print(assignments["id"][0:10])
-    assignments = assignments[0:ass_n]
     tr = assignments[0:(ass_n - split)]
     tt = assignments[-split:]
 
@@ -682,7 +684,7 @@ if __name__ == "__main__":
     if do_train:
         print("training")
         model, ylb, qlist, sc = train_deep_model(tr, n_macroepochs, n_epochs, concept_map=concept_map,
-                                                 pid_override=pid_override, bake_fresh=frisch_backen)
+                                                 pid_override=pid_override, bake_fresh=frisch_backen, oac=open_asst_cache)
         print("...deleted original X,y")
         model.save(base + 'hwg_model.hd5')
         joblib.dump((ylb, qlist, sc), base + 'hwg_mlb.pkl')
@@ -698,5 +700,5 @@ if __name__ == "__main__":
             # (sscaler,levscaler,volscaler) = joblib.load(base + 'hwg_scaler.pkl')
         # evaluate_predictions(tt, model, scaler, sscaler)
         evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map,
-                              qid_override=qlist)  # , sscaler,levscaler,volscaler)
+                              qid_override=qlist, oac=open_asst_cache)  # , sscaler,levscaler,volscaler)
         print("DEEP testing done")
