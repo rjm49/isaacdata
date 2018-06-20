@@ -167,7 +167,6 @@ class hwgengen2:
         print("building dob_cache")
         empty_cache = {}
         self.dob_cache = build_dob_cache(empty_cache, assts)
-        self.open_assignment_cache = build_oa_cache(assts, self.gb_qmap)
         print(len(empty_cache))
         print("done")
 
