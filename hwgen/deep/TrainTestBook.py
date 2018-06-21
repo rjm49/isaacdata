@@ -5,6 +5,7 @@ import pickle
 import random
 import zlib
 from collections import Counter, defaultdict
+from copy import copy
 from random import seed, shuffle
 from statistics import mean
 from typing import Union
@@ -23,9 +24,9 @@ from sklearn.preprocessing import MultiLabelBinarizer, StandardScaler, LabelBina
 from sklearn.utils import compute_class_weight
 
 from hwgen.common import init_objects, get_meta_data, get_n_hot, split_assts, get_page_concepts, jaccard, \
-    get_all_assignments, get_student_list, make_gb_question_map
+    get_all_assignments, get_student_list, make_gb_question_map, get_user_data
 from hwgen.concept_extract import concept_extract, page_to_concept_map
-from hwgen.hwgengen2 import hwgengen2, gen_qhist, build_oa_cache
+from hwgen.hwgengen2 import hwgengen2, gen_qhist, build_oa_cache, build_dob_cache
 from hwgen.profiler import get_attempts_from_db
 
 from matplotlib import pyplot as plt
@@ -317,7 +318,7 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
             sc = StandardScaler()
             inp = sc.fit_transform(inp)
 
-            model.fit(inp, y, epochs=n_epochs, shuffle=False, batch_size=32, callbacks=[es])  # , class_weight=weights)
+            model.fit(inp, y, epochs=n_epochs, shuffle=False, batch_size=8, callbacks=[es])  # , class_weight=weights)
 
             scores = model.evaluate(inp, y)
             print(scores[0], scores[1])
@@ -629,8 +630,8 @@ if __name__ == "__main__":
     do_train = True
     do_testing = True
     frisch_backen = True
-    ass_n = 25
-    split = 5
+    ass_n = 250
+    split = 50
     n_macroepochs = 1
     n_epochs = 100
 
@@ -648,14 +649,90 @@ if __name__ == "__main__":
     assignments = assignments[assignments["include"] == True]
     assignments["creation_date"] = pandas.to_datetime(assignments["creation_date"])
 
+    SXUA = {}
+    student_static = {}
+    last_ts = {}
+    last_hexes = {}
+
+    print("build dob cache")
+    dob_cache= build_dob_cache(assignments)
+    print("done")
+    for row in assignments.iterrows():
+        print(row)
+        ts = row[1]["creation_date"]
+        gr_id = row[1]["group_id"]
+        gb_id = row[1]["gameboard_id"]
+        student_ids = list(get_student_list(gr_id)["user_id"])
+        print(student_ids)
+        student_data = get_user_data(student_ids)
+        hexes= list(gb_qmap[gb_id])
+        print(hexes)
+        for psi in student_ids:
+            # print(psi)
+            if psi not in SXUA:
+                S = numpy.zeros(4)
+                X = numpy.zeros(len(all_qids))
+                U = numpy.zeros(len(all_qids))
+                A = numpy.zeros(len(all_page_ids))
+                SXUA[psi] = {}
+                SXUA[psi][ts] = (S,X,U,A)
+                print("+",psi, S, numpy.sum(X), numpy.sum(U), numpy.sum(A))
+                last_ts[psi] = ts
+                last_hexes[psi] = hexes
+                psi_data = student_data[student_data["id"]==psi]
+                rd = pandas.to_datetime(psi_data.iloc[0]["registration_date"])
+                # print(rd)
+                student_static[psi] = (rd,)
+            else:
+                l_ts = last_ts[psi]
+                l_hexes = last_hexes[psi]
+                S,X,U,A = copy(SXUA[psi][l_ts])
+                #make updates
+                attempts = get_attempts_from_db(psi)
+                recent_attempts = attempts[(attempts["timestamp"]>=l_ts) & (attempts["timestamp"]<ts)]
+                qids = list(recent_attempts["question_id"])
+                wins = list(recent_attempts[(recent_attempts["correct"] == True)]["question_id"])
+                for qid in qids:
+                    try:
+                        qix = all_qids.index(qid)
+                    except:
+                        print("UNK Qn ", qid)
+                        continue
+                    X[qix] = 1
+                    if qid in wins:
+                        attct = (attempts["question_id"] == qid).sum()
+                        U[qix] = 1.0 / attct
+                for hx in l_hexes:
+                    hxix = all_page_ids.index(hx)
+                    A[hxix] = 1
+                S[0] = (ts - dob_cache[psi]).days / 365.242 if dob_cache[psi] is not None else 0
+                # print(ts, l_ts)
+                day_delta = max(1, (ts-l_ts).seconds)/ 86400.0
+                att_delta = recent_attempts.shape[0]
+                # print(day_delta, att_delta)
+                reg_date = student_static[psi][0]
+                # print(reg_date)
+                S[1] = (ts - reg_date).days
+                S[2] = (att_delta/day_delta)
+                S[3] = (len(wins)/att_delta if att_delta else 0)
+                SXUA[psi][ts] = S,X,U,A
+                print("~",psi, S, numpy.sum(X), numpy.sum(U), numpy.sum(A))
+                last_ts[psi] = ts
+                last_hexes[psi] = hexes
+    f = open(base+"SXUA.pkl", 'wb')
+    pickle.dump(SXUA, f)
+    f.close()
+    print("*** *** *** SAVED")
+
     ass_n = assignments.shape[0] if (ass_n <= 0) else ass_n
     assignments = assignments[0:ass_n]
 
     # TODO it would be nicer to build this inside the generator object, but currently this is the only place where
     # the full assignment set is available
-    open_asst_cache = build_oa_cache(assignments, gb_qmap)
+    # print("building oac")
+    # open_asst_cache = build_oa_cache(assignments, gb_qmap)
 
-    assignments = assignments.sample(n=ass_n, random_state=666)
+    # assignments = assignments.sample(n=ass_n, random_state=666)
     # print(assignments["id"][0:10])
     tr = assignments[0:(ass_n - split)]
     tt = assignments[-split:]
