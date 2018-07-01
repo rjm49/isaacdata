@@ -27,7 +27,7 @@ def test_db_connexion():
         return False
     return True
 # DATABASE = test_db_connexion()
-DATABASE=True
+DATABASE=False
 LOAD_FROM_CACHE = True
 SAVE_TO_CACHE = True
 

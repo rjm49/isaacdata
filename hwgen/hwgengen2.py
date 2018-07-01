@@ -34,7 +34,8 @@ def ass_extract(ass):
     return id,ts,gb_id,gr_id
 
 
-def build_dob_cache(dob_cache, assts):
+def build_dob_cache(assts):
+    dob_cache = {}
     for ix, ass in enumerate(assts.iterrows()):
         id, ts, gb_id, gr_id = ass_extract(ass)
         students = list(get_student_list(gr_id)["user_id"])
@@ -58,6 +59,7 @@ def build_dob_cache(dob_cache, assts):
 
 
 def build_oa_cache(asst_df, gb_q_map):
+    print("building oa cache")
     #TODO assumes asst_df is complete, and ordered
     oa_cache = {} # hashtable to hold (timestamp -> student) mappings
     psi_last_A ={} # hashtable to hold (student -> last_assignment_timestamp) mappings, to retrieve previous state
@@ -79,6 +81,7 @@ def build_oa_cache(asst_df, gb_q_map):
             else:
                 A = numpy.copy(psi_last_A[psi])
                 updates = psi_last_hexes[psi]
+                print("({}): {} {} {}".format(id, ts, psi, updates))
                 for hx in updates:
                     ix = all_page_ids.index(hx)
                     A[ix] = 1 # this homework has been set!
@@ -374,8 +377,8 @@ def gen_success(psi,ts_list):
 
     start_at = -1 if (first_non_empty is None) else max(first_non_empty-1,0)
     ts_list = ts_list[start_at:]
-    U = numpy.zeros(len(all_qids))
     for ts in ts_list:
+        U = numpy.zeros(len(all_qids))
         attempts = raw_attempts[(raw_attempts["timestamp"] < ts)]
         hits = attempts[(attempts["correct"] == True)]
         hits = hits["question_id"]
@@ -385,9 +388,9 @@ def gen_success(psi,ts_list):
             except:
                 print("UNK Qn ", qid)
                 continue
-            #attct = (attempts["question_id"]==qid).sum()
-            U[qix] = 1.0#/attct
-        # U_list.append(U)
-        U_list.append(numpy.copy(U))
-        raw_attempts = raw_attempts[(raw_attempts["timestamp"] >= ts)]
+            attct = (attempts["question_id"]==qid).sum()
+            U[qix] = 1.0/attct
+        U_list.append(U)
+        # U_list.append(numpy.copy(U))
+        # raw_attempts = raw_attempts[(raw_attempts["timestamp"] >= ts)]
     return U_list

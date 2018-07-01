@@ -144,8 +144,8 @@ def make_phybook_model(n_S, n_X, n_U, n_A, n_P):
     # i_U = Dense(200, activation='relu')(input_U)
 
     hidden = Dense(w, activation='relu')(input)  # (concatenate([input_S, input_X, input_U]))
-    # hidden = Dropout(.5)(hidden)
-    # hidden = Dense((w + n_P) // 2, activation='relu')(hidden)
+    hidden = Dropout(.5)(hidden)
+    hidden = Dense((w + n_P) // 2, activation='relu')(hidden)
     # hidden = Dropout(.5)(hidden)
 
     next_pg = Dense(n_P, activation='softmax', name="next_pg")(hidden)
@@ -452,8 +452,10 @@ def evaluate_phybook_loss(tt,sxua, model, sc):
     predictions = model.predict(x_list)
     j_max = 0
     thresh_max = 0
-    for j_thresh in [0.4]:
+    # dir_for_j_max = 0
+    for j_thresh in [0.3, 0.4, 0.5, 0.6, 0.7]:
         j_sum = 0
+        # dir_sum = 0
         incl_sum = 0
         N = len(predictions)
         for p, t in zip(predictions, hex_list):
@@ -464,22 +466,31 @@ def evaluate_phybook_loss(tt,sxua, model, sc):
                     phxs.append(all_page_ids[ix])
                     probs.append(p[ix])
             probs_shortlist = list(reversed(sorted(probs)))
-            Z = reversed( [x for _, x in sorted(zip(probs, phxs))] )
-            print(t, list(Z))
+            Z = list(reversed( [x for _, x in sorted(zip(probs, phxs))] ))
+            # if Z:
+            #     for t_el in t:
+            #         if t_el in Z:#'direct hit'
+            #             dir_sum += 1.0/len(t)
+            print(t, Z)
             print(probs_shortlist)
             t=set(t)
             phxs=set(phxs)
             if len(t.intersection(phxs)) > 0:
                 incl_sum += 1
             j_sum  += len(t.intersection(phxs)) / len(t.union(phxs))
-        if j_sum > j_max:
-            j_max = j_sum
+        j_score = j_sum/N
+        # dir_score = dir_sum/N
+        if j_score > j_max:
+            j_max = j_score
             thresh_max = j_thresh
+            # dir_for_j_max = dir_score
         print("j_thresh =",j_thresh)
-        print("Jaccard:", j_sum/N)
+        print("Jaccard:", j_score)
         print("Incl:", incl_sum/N)
+        # print("D/H:",dir_score)
         print("~ ~ ~ ~")
-    print("max thresh/jacc:", thresh_max, j_sum)
+    print("max thresh/jacc:", thresh_max, j_max)
+    # print("max D/H:",dir_for_j_max)
 
 def filter_assignments(assignments, book_only):
     # query = "select id, gameboard_id, group_id, owner_user_id, creation_date from assignments order by creation_date asc"
@@ -702,7 +713,7 @@ if __name__ == "__main__":
     do_train = True
     do_testing = True
     frisch_backen = True
-    ass_n = 1050
+    ass_n = -1
     split = 50
     n_macroepochs = 1
     n_epochs = 100
