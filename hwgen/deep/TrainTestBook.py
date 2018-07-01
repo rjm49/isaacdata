@@ -6,6 +6,7 @@ import random
 import zlib
 from collections import Counter, defaultdict
 from copy import copy
+from pickletools import float8
 from random import seed, shuffle
 from statistics import mean
 from typing import Union
@@ -15,9 +16,11 @@ import numpy
 import pandas
 import pylab
 from keras import callbacks, Input, Model
+from keras.callbacks import EarlyStopping
 from keras.layers import Dense, Dropout, concatenate, LSTM, Embedding
+from keras.metrics import top_k_categorical_accuracy
 from keras.models import load_model, Sequential
-from keras.optimizers import Adam
+from keras.optimizers import Adam, RMSprop
 from sklearn.externals import joblib
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import MultiLabelBinarizer, StandardScaler, LabelBinarizer
@@ -29,7 +32,7 @@ from hwgen.concept_extract import concept_extract, page_to_concept_map
 from hwgen.hwgengen2 import hwgengen2, gen_qhist, build_oa_cache, build_dob_cache
 from hwgen.profiler import get_attempts_from_db
 
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt, pyplot
 
 import tracemalloc
 
@@ -126,14 +129,16 @@ def make_phybook_model(n_S, n_X, n_U, n_A, n_P):
     # input_X = Input(shape=(n_X,), name="x_input")
     # input_U = Input(shape=(n_U,), name="u_input")
 
-    input = Input(shape=((n_S + n_X + n_U + n_A),), name="input")
+    # iw = (n_S + n_X + n_U + n_A)
+    iw = (n_S + n_A)
+    input = Input(shape=(iw,), name="input")
 
     # e = Embedding(n_Voc, n_Emb, input_length=20)
     # lstm1 = LSTM(256, input_shape=(20,))
 
     # w = 1024 # best was 256
     # w = (n_S + n_X + n_P)//2
-    w = 5000
+    w = 1024
 
     # i_X = Dense(200, activation='relu')(input_X)
     # i_U = Dense(200, activation='relu')(input_U)
@@ -143,40 +148,16 @@ def make_phybook_model(n_S, n_X, n_U, n_A, n_P):
     # hidden = Dense((w + n_P) // 2, activation='relu')(hidden)
     # hidden = Dropout(.5)(hidden)
 
-    # decode_test = Dense(n_Q, activation="sigmoid", name="decode_test")(hidden)
-    # hidden = Dense(w, activation='relu')(hidden)
-    # hidden = Dropout(.5)(hidden)
-
-    # hidden = Dense(w, activation='relu')(hidden)
-    # hidden = Dropout(.5)(hidden)
-
-    # hidden = Dense(w, activation='relu')(hidden)
-    # hidden = Dropout(.5)(hidden)
-
-    # hidden = Dense(1000, activation='relu')(hidden)
-
-
-    # EXTRA DEEP CHICAGO STYLE!
-    # hidden = Dense(w, activation='relu')(hidden)
-    # hidden = Dropout(.2)(hidden)
-    # hidden = Dense(w, activation='relu')(hidden)
-    # hidden = Dropout(.2)(hidden)
-    # hidden = Dense(w, activation='relu')(hidden)
-    # hidden = Dropout(.2)(hidden)
-    # hidden = Dense(w, activation='relu')(hidden)
-    # hidden = Dropout(.2)(hidden)
-    # hidden = Dense(w, activation='relu')(hidden)
-    # hidden = Dropout(.2)(hidden)
-    # next_concept = Dense(n_C, activation='sigmoid', name="next_concept")(hidden)
     next_pg = Dense(n_P, activation='softmax', name="next_pg")(hidden)
 
     # m = Model(inputs=input_X, outputs=[next_pg,next_concept] )
     # m.compile(optimizer="adam", loss=['categorical_crossentropy','binary_crossentropy'])
 
     o = Adam()
+    # o = RMSprop(lr=0.05)
 
     m = Model(inputs=input, outputs=next_pg)
-    m.compile(optimizer=o, loss='categorical_crossentropy', metrics=['acc'])
+    m.compile(optimizer=o, loss='categorical_crossentropy', metrics=["categorical_accuracy", "top_k_categorical_accuracy"])
 
     m.summary()
     return m
@@ -187,8 +168,7 @@ gb_qmap = make_gb_question_map()
 numpy.set_printoptions(threshold=numpy.nan)
 
 
-def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_override=None, bake_fresh=False,
-                     oac=None):
+def train_deep_model(tr, sxua, n_macroepochs=100, n_epochs=10):
     model = None
 
     concept_list = list(set().union(*concept_map.values()))
@@ -235,97 +215,92 @@ def train_deep_model(tr, n_macroepochs=100, n_epochs=10, concept_map=None, pid_o
         print(clix, cls, wgt)
         weights[clix] = wgt
 
-    nb_epoch = n_macroepochs
-    for e in range(nb_epoch):
-        xygen = hwgengen2(tr, batch_size=-1, FRESSSH=bake_fresh, qid_override=qlist,
-                          return_qhist=False, oac=oac)  # make generator object
-        print("macroepoch %d of %d" % (e, nb_epoch))
-        for S, X, U, A, y, ai, awgt, _, _ in xygen:
+    s_list = []
+    x_list = []
+    y_list = []
+    # master_page_ids = all_page_ids
+    # all_page_ids = pid_override
+    for row in tr.iterrows():
+        print(row)
+        ts = row[1]["creation_date"]
+        gr_id = row[1]["group_id"]
+        gb_id = row[1]["gameboard_id"]
+        student_ids = list(get_student_list(gr_id)["user_id"])
+        print(student_ids)
+        student_data = get_user_data(student_ids)
+        hexes= list(gb_qmap[gb_id])
+        print(hexes)
 
-            # if False:
-            #     for aie, s, x, u, t in zip(ai, S, X, U, y):
-            #         print_student_summary(aie, s, u, ylb, None, t, None, None)
-            #     input("standing by")
+        #n-hot binarise the y vector here
+        y_true = numpy.zeros(len(all_page_ids))
+        N = len(hexes)
+        for hx in hexes:
+            hxix = all_page_ids.index(hx)
+            y_true[hxix]=1.0 #/N
 
-            # SS = numpy.copy(S)
-            # SS[0] = numpy.round(SS[0],1)
-            # SS[3] = numpy.round(SS[3],1)
-            # XX = numpy.concatenate((SS,X,U), axis=1)
-            # calc_entropies(XX,y)
-            # exit()
+        for psi in student_ids:
+            y_list.append(y_true)
+            # print(psi)
+            S,X,U,A = pickle.loads(zlib.decompress(sxua[psi][ts]))
+            print(numpy.sum(A))
+            # print([all_page_ids[hx] for hx,el in enumerate(A) if el==1])
+            s_list.append(S)
+            # x_list.append(numpy.concatenate((U,A))) #X
+            x_list.append(A)  # X
+        # input("stank")
 
-            y_labs = numpy.array(y)
-            if (X == []):
-                continue
-            S = numpy.array(S)  # strings (labels)
-            X = numpy.array(X)  # floats (fade)
-            U = numpy.array(U)  # signed ints (-1,0,1)
-            A = numpy.array(A)
-            # print("S",S.shape)
-            # print("X",X.shape)
-            # print("U",U.shape)
-            assert y_labs.shape[1] == 1  # each line shd have just one hex assignment
+    gc.collect()
 
-            # c_labs = [concept_map[label[0]] for label in y_labs]
-            # c = clb.transform(c_labs)
-            # print(c_labs[0:10])
-            # print(c[0:10])
+    s_list = numpy.array(s_list)
+    x_list = numpy.array(x_list)
+    y_list = numpy.array(y_list, dtype=numpy.int8)
 
-            try:
-                y = ylb.transform(y_labs)  # / awgt
-            except:
-                y = ylb.fit_transform(y_labs)  # / awgt
-            # print(y_labs)
-            # input(y)
-            # input(awgt)
-            # assert numpy.sum(y[0]) == 1 # Each line should be one-hot
 
-            # hex_int_wgts = {}
-            # oov_wgt = min(hex_wghts.values())
-            # for clix, cls in enumerate(ylb.classes_):
-            #     if cls in hex_wghts:
-            #         hex_int_wgts[clix] = hex_wghts[cls]
-            #     else:
-            #         hex_int_wgts[clix] = oov_wgt
+    SCALE = True
+    sc = StandardScaler()
+    if SCALE:
+        # print(x_list.shape)
+        lenX = s_list.shape[0]
+        # for ix,x_el in enumerate(x_list):
+        #     x_list[ix] = sc.transform(x_list[ix].reshape(1,-1))
 
-            es = callbacks.EarlyStopping(monitor='acc',
-                                         min_delta=0,
-                                         patience=2,
-                                         verbose=1, mode='auto')
-            if model is None:
-                print("making model")
-                print(S.shape, X.shape, U.shape, A.shape, y.shape)
-                model = make_phybook_model(S.shape[1], X.shape[1], U.shape[1], A.shape[1], y.shape[1])
-                print("model made")
+        start = 0
+        gap = 5000
+        while(start<lenX):
+            end = min(start+gap, lenX)
+            print("fitting scaler",start,end)
+            sc.partial_fit(s_list[start:end,:])
+            start += gap
 
-            # if len(y)<5:
-            #     continue
-            # for r in range(S.shape[0]):
-            #     print(S[r]
+        start = 0
+        while(start<lenX):
+            end = min(start+gap, lenX)
+            print("scaling",start,end)
+            s_list[start:end,:] = sc.transform(s_list[start:end,:])
+            start += gap
 
-            # snapshot = tracemalloc.take_snapshot()
-            # top_stats = snapshot.statistics('lineno')
-            # print("[ Top 10 ]")
-            # for stat in top_stats[:10]:
-            #     print(stat)
-            # exit()
+    print(s_list.shape, x_list.shape)
+    x_list = numpy.concatenate((s_list, x_list), axis=1)
+    print(x_list.shape)
+    gc.collect()
 
-            gc.collect()
+    #OK, we now have the four student profile vectors, and the true y vector, so we can fit the model
+    if model is None:
+        print("making model")
+        print(S.shape, X.shape, U.shape, A.shape, y_list.shape)
+        model = make_phybook_model(S.shape[0], X.shape[0], U.shape[0], A.shape[0], y_list.shape[1])
+        print("model made")
+        es = EarlyStopping(monitor='categorical_accuracy', patience=0, verbose=0, mode='auto')
+        history = model.fit(x_list, y_list, verbose=1, epochs=100, callbacks=[es], shuffle=True, batch_size=32)
+    pyplot.plot(history.history['categorical_accuracy'])
+    # pyplot.plot(history.history['binary_crossentropy'])
+    # pyplot.plot(history.history['categorical_crossentropy'])
+    pyplot.plot(history.history['top_k_categorical_accuracy'])
+    pyplot.show()
+    scores = model.evaluate(x_list,y_list)
+    print(scores)
 
-            print(S.shape)
-            inp = numpy.concatenate((S, X, U, A), axis=1)
-            print(inp.shape)
-            sc = StandardScaler()
-            inp = sc.fit_transform(inp)
-
-            model.fit(inp, y, epochs=n_epochs, shuffle=False, batch_size=8, callbacks=[es])  # , class_weight=weights)
-
-            scores = model.evaluate(inp, y)
-            print(scores[0], scores[1])
-
-            X = y = yc = lv = None
-
-    return model, ylb, qlist, sc  # , sscaler, levscaler, volscaler
+    return model, sc  # , sscaler, levscaler, volscaler
 
 
 # def get_top_k_hot(raw, k): # TODO clean up
@@ -431,127 +406,80 @@ def save_class_report_card(ailist, S, U, X, y, y_preds, awgt, slist, qhist, ylb)
     f.close()
 
 
-def evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map,
-                          qid_override=None, oac=None):  # , sscaler,levscaler,volscaler): #, test_meta):
-    print("ready to evaluate...")
-    num_direct_hits = 0
-    errs = 0
-    num_chapter_hits = 0
-    ass_tot = 0
-    num_cases = 1
-    num_students = 0
-    test_gen = hwgengen2(tt, batch_size="assignment", FRESSSH=False, qid_override=qid_override,
-                         return_qhist=True, oac=oac)  # batch_size = "group"
-    for S, X, U, A, y, ailist, awgt, slist, qhist in test_gen:
-        print("batch")
+def evaluate_phybook_loss(tt,sxua, model, sc):
+    x_list = []
+    y_list = []
+    s_list = []
+    hex_list = []
+    # all_page_ids = pid_override
+    for row in tt.iterrows():
+        print(row)
+        ts = row[1]["creation_date"]
+        gr_id = row[1]["group_id"]
+        gb_id = row[1]["gameboard_id"]
+        student_ids = list(get_student_list(gr_id)["user_id"])
+        print(student_ids)
+        student_data = get_user_data(student_ids)
+        hexes= list(gb_qmap[gb_id])
+        print(hexes)
 
-        psi_len = len(set(slist))  # <-- best direct hits we can get is one per student
+        #n-hot binarise the y vector here
+        y_true = numpy.zeros(len(all_page_ids), dtype=numpy.int8)
+        for hx in hexes:
+            hxix = all_page_ids.index(hx)
+            y_true[hxix]=1.0
 
-        S = numpy.array(S)
-        if X == []:
-            continue
-        X = numpy.array(X)  # Xperience is 0|1
-        U = numpy.array(U)  # success is 0 or 1/n_atts
-        A = numpy.array(A)  # Previous assignments are 0|1
-        y = numpy.array(y)  # string vector
+        for psi in student_ids:
+            hex_list.append(hexes)
+            y_list.append(y_true)
+            # print(psi)
+            # S,X,U,A = sxua[psi][ts]
+            S,X,U,A = pickle.loads(zlib.decompress(sxua[psi][ts]))
+            s_list.append(S)
+            # x_list.append(numpy.concatenate((S,U,A))) #X
+            x_list.append(A)
 
-        inp = numpy.concatenate((S, X, U, A), axis=1)
-        inp = sc.transform(inp)
-        y_preds = model.predict(inp, verbose=True)
+    # y_list = numpy.array(y_list)
+    try:
+        s_list = sc.transform(s_list)
+    except:
+        s_list = numpy.array(s_list)
+    # scores = model.evaluate(x_list,y_list)
+    # print(scores)
+    x_list = numpy.concatenate((s_list,x_list), axis=1)
 
-        # convert predictions to recommendations here
-        print("Preds done")
-        # print(y_preds)
-        # print(c_preds)
-        # c_preds[c_preds >= 0.1] = 1
-        # c_preds[c_preds < 0.1] = 0
-        # sugg_c_labs = clb.inverse_transform(c_preds)
-
-        print("inverting")
-        max_y = ylb.inverse_transform(y_preds)  # shd give us a single output label for the best choice!
-        print("concating")
-        y = numpy.concatenate(y)
-
-        ass_tot += evaluate_hits_against_asst(ailist, y, max_y, y_preds, ylb)
-
-        num_students += psi_len
-        save_class_report_card(ailist, S, U, X, y, y_preds, awgt, slist, qhist, ylb)
-
-        for ai, s, u, x, t, p, pr, clz, this_preds, w, psi in zip(ailist, S, U, X, y, max_y, y_preds.max(axis=1),
-                                                                  y_preds.argmax(axis=1), y_preds, awgt, slist):
-            # if numpy.sum(x) < 20:
-            #     continue
-
-            sortargs = numpy.argsort(this_preds)
-            # print(sortargs)
-            sortargs = list(reversed(numpy.argsort(this_preds)))
-            # print(sortargs)
-            pred_labels = [ylb.classes_[ix] for ix in sortargs]
-            pred_probas = list(reversed(numpy.sort(this_preds)))
-            tabus = [u[ix] for ix in sortargs]
-            # print(t,p)
-            # print(p10)
-            # print(t10)
-
-            print("STUDENT: {} (real is {})".format(psi, t))
-            print(s)
-            print(numpy.sum((x > 0)), numpy.sum((u > 0)), 1.0 / numpy.mean(u[u > 0]))
-            for i in range(5):
-                print("   {} {:.5f} {}".format(pred_labels[i], pred_probas[i], tabus[i]))
-
-            # if(numpy.sum(t10)>0):
-            #     input("")
-
-            # i=0
-            # while u[sortargs[i]] != 0: #knock out the tabu qns
-            #     i += 1
-            # p = ylb.classes_[sortargs[i]]
-
-            # print(p10)
-            # print(t10)
-            # print(this_preds[0:10])
-            # if(i > 0):
-            #     input(("{}th arg".format(i),t,p))
-
-            if t == p:
-                num_direct_hits += 1
-            #
-            # if t != p:
-            #     errs += 1.0/w[0]
-            #
-            # if t[0:4]==p[0:4]:
-            #     num_chapter_hits+=1
-            num_cases += 1
-            #
-            # print_student_summary(ai, psi, s, u, ylb, clz, t, p, pr)
-
-            # for t,p,sg in zip(true_y, max_y, sugg_c_labs):
-            #     true_c_labs = concept_map[t]
-            #     pred_c_labs = concept_map[p]
-            # print(true_c_labs)
-            # print(pred_c_labs)
-            # print(sg)
-            # print("- - -@")
-
-            # num_direct_hits += numpy.sum(max_y == y)
-            # for el,el2 in zip(max_y,y):
-            #     if el[0:4]==el2[0:4]:
-            #         num_chapter_hits+=1
-
-            # num_cases += len(max_y)
-    asst_level_score = ass_tot / num_cases
-    batch_score = num_direct_hits / num_cases
-    print("direct hits: {} of {}: {}".format(num_direct_hits, num_cases, batch_score))
-    print("chapter hits: {} of {}: {}".format(num_chapter_hits, num_cases, num_chapter_hits / num_cases))
-    print("aggregated avg score = ", asst_level_score)
-    print("wgted error rate = ", (errs / num_cases))
-    print("student hits = ", (num_direct_hits / num_students))
-    # X_sums = numpy.array(X_sums).ravel()
-    # print(X_sums)
-    # X_sums = (X_sums==0)
-    # tot_zero = numpy.sum(X_sums)
-    # print(tot_zero)
-
+    print("results")
+    predictions = model.predict(x_list)
+    j_max = 0
+    thresh_max = 0
+    for j_thresh in [0.4]:
+        j_sum = 0
+        incl_sum = 0
+        N = len(predictions)
+        for p, t in zip(predictions, hex_list):
+            phxs = []
+            probs = []
+            for ix, el in enumerate(p):
+                if el>j_thresh:
+                    phxs.append(all_page_ids[ix])
+                    probs.append(p[ix])
+            probs_shortlist = list(reversed(sorted(probs)))
+            Z = reversed( [x for _, x in sorted(zip(probs, phxs))] )
+            print(t, list(Z))
+            print(probs_shortlist)
+            t=set(t)
+            phxs=set(phxs)
+            if len(t.intersection(phxs)) > 0:
+                incl_sum += 1
+            j_sum  += len(t.intersection(phxs)) / len(t.union(phxs))
+        if j_sum > j_max:
+            j_max = j_sum
+            thresh_max = j_thresh
+        print("j_thresh =",j_thresh)
+        print("Jaccard:", j_sum/N)
+        print("Incl:", incl_sum/N)
+        print("~ ~ ~ ~")
+    print("max thresh/jacc:", thresh_max, j_sum)
 
 def filter_assignments(assignments, book_only):
     # query = "select id, gameboard_id, group_id, owner_user_id, creation_date from assignments order by creation_date asc"
@@ -627,13 +555,6 @@ if __name__ == "__main__":
     #
     # print("loaded {} assignments".format(len(assignments)))
     #
-    do_train = True
-    do_testing = True
-    frisch_backen = True
-    ass_n = 250
-    split = 50
-    n_macroepochs = 1
-    n_epochs = 100
 
     USE_CACHED_ASSGTS = True
     SAVE_CACHED_ASSGTS = True
@@ -649,82 +570,147 @@ if __name__ == "__main__":
     assignments = assignments[assignments["include"] == True]
     assignments["creation_date"] = pandas.to_datetime(assignments["creation_date"])
 
-    SXUA = {}
-    student_static = {}
-    last_ts = {}
-    last_hexes = {}
+    print("building/loading SXUA")
+    BUILD_SXUA = False
+    if BUILD_SXUA:
+        SXUA = {}
+        student_static = {}
+        last_ts = {}
+        last_hexes = {}
+        print("build dob cache")
+        dob_cache= build_dob_cache(assignments)
+        print("done")
+        for row in assignments.iterrows():
+            gc.collect()
+            print(row)
+            ts = row[1]["creation_date"]
+            gr_id = row[1]["group_id"]
+            gb_id = row[1]["gameboard_id"]
+            student_ids = list(get_student_list(gr_id)["user_id"])
+            print(student_ids)
+            student_data = get_user_data(student_ids)
+            now_hexes= list(gb_qmap[gb_id])
+            print(now_hexes)
+            for psi in student_ids:
+                # print(psi)
+                if psi not in SXUA:
+                    S = numpy.zeros(4)
+                    X = numpy.zeros(len(all_qids), dtype=numpy.int8)
+                    U = numpy.zeros(len(all_qids))
+                    A = numpy.zeros(len(all_page_ids), dtype=numpy.int8)
+                    SXUA[psi] = {}
+                    print("+",psi, S, numpy.sum(X), numpy.sum(U), numpy.sum(A))
+                    psi_data = student_data[student_data["id"]==psi]
+                    rd = pandas.to_datetime(psi_data.iloc[0]["registration_date"])
+                    # print(rd)
+                    student_static[psi] = (rd,)
+                else:
+                    l_ts = last_ts[psi]
+                    l_hexes = last_hexes[psi]
+                    S,X,U,A = pickle.loads(zlib.decompress(SXUA[psi][l_ts]))
+                    # S,X,U,A = copy(S),copy(X),copy(U),copy(A)
+                    #make updates
+                    attempts = get_attempts_from_db(psi)
+                    recent_attempts = attempts[(attempts["timestamp"]>=l_ts) & (attempts["timestamp"]<ts)]
+                    qids = list(recent_attempts["question_id"])
+                    wins = list(recent_attempts[(recent_attempts["correct"] == True)]["question_id"])
+                    for qid in qids:
+                        try:
+                            qix = all_qids.index(qid)
+                        except:
+                            print("UNK Qn ", qid)
+                            continue
+                        X[qix] = 1
+                        if qid in wins:
+                            attct = (attempts["question_id"] == qid).sum()
+                            U[qix] = 1.0 / attct
 
-    print("build dob cache")
-    dob_cache= build_dob_cache(assignments)
-    print("done")
-    for row in assignments.iterrows():
-        print(row)
-        ts = row[1]["creation_date"]
-        gr_id = row[1]["group_id"]
-        gb_id = row[1]["gameboard_id"]
-        student_ids = list(get_student_list(gr_id)["user_id"])
-        print(student_ids)
-        student_data = get_user_data(student_ids)
-        hexes= list(gb_qmap[gb_id])
-        print(hexes)
-        for psi in student_ids:
-            # print(psi)
-            if psi not in SXUA:
-                S = numpy.zeros(4)
-                X = numpy.zeros(len(all_qids))
-                U = numpy.zeros(len(all_qids))
-                A = numpy.zeros(len(all_page_ids))
-                SXUA[psi] = {}
-                SXUA[psi][ts] = (S,X,U,A)
-                print("+",psi, S, numpy.sum(X), numpy.sum(U), numpy.sum(A))
+                    for hx in l_hexes:
+                        hxix = all_page_ids.index(hx)
+                        A[hxix] = 1
+
+                    S[0] = (ts - dob_cache[psi]).days / 365.242 if dob_cache[psi] is not None else 0
+                    # print(ts, l_ts)
+                    day_delta = max(1, (ts-l_ts).seconds)/ 86400.0
+                    att_delta = recent_attempts.shape[0]
+                    # print(day_delta, att_delta)
+                    reg_date = student_static[psi][0]
+                    # print(reg_date)
+                    S[1] = (ts - reg_date).days
+                    S[2] = (att_delta/day_delta)
+                    S[3] = (len(wins)/att_delta if att_delta else 0)
                 last_ts[psi] = ts
-                last_hexes[psi] = hexes
-                psi_data = student_data[student_data["id"]==psi]
-                rd = pandas.to_datetime(psi_data.iloc[0]["registration_date"])
-                # print(rd)
-                student_static[psi] = (rd,)
-            else:
-                l_ts = last_ts[psi]
-                l_hexes = last_hexes[psi]
-                S,X,U,A = copy(SXUA[psi][l_ts])
-                #make updates
-                attempts = get_attempts_from_db(psi)
-                recent_attempts = attempts[(attempts["timestamp"]>=l_ts) & (attempts["timestamp"]<ts)]
-                qids = list(recent_attempts["question_id"])
-                wins = list(recent_attempts[(recent_attempts["correct"] == True)]["question_id"])
-                for qid in qids:
-                    try:
-                        qix = all_qids.index(qid)
-                    except:
-                        print("UNK Qn ", qid)
-                        continue
-                    X[qix] = 1
-                    if qid in wins:
-                        attct = (attempts["question_id"] == qid).sum()
-                        U[qix] = 1.0 / attct
-                for hx in l_hexes:
-                    hxix = all_page_ids.index(hx)
-                    A[hxix] = 1
-                S[0] = (ts - dob_cache[psi]).days / 365.242 if dob_cache[psi] is not None else 0
-                # print(ts, l_ts)
-                day_delta = max(1, (ts-l_ts).seconds)/ 86400.0
-                att_delta = recent_attempts.shape[0]
-                # print(day_delta, att_delta)
-                reg_date = student_static[psi][0]
-                # print(reg_date)
-                S[1] = (ts - reg_date).days
-                S[2] = (att_delta/day_delta)
-                S[3] = (len(wins)/att_delta if att_delta else 0)
-                SXUA[psi][ts] = S,X,U,A
+                last_hexes[psi] = now_hexes
                 print("~",psi, S, numpy.sum(X), numpy.sum(U), numpy.sum(A))
-                last_ts[psi] = ts
-                last_hexes[psi] = hexes
-    f = open(base+"SXUA.pkl", 'wb')
-    pickle.dump(SXUA, f)
-    f.close()
-    print("*** *** *** SAVED")
+                SXUA[psi][ts] = zlib.compress(pickle.dumps((S,X,U,A)))
 
-    ass_n = assignments.shape[0] if (ass_n <= 0) else ass_n
+        # f = open(base+"SXUA.pkl", 'wb')
+        # pickle.dump(SXUA, f)
+        # f.close()
+        # print("*** *** *** SAVED")
+
+        # print("compressing SXUA")
+        # for st in SXUA:
+        #     for tstamp in SXUA[st]:
+        #         SXUA[st][tstamp] = zlib.compress(pickle.dumps(SXUA[st][tstamp]))
+        f = open(base + "SXUA.comp.pkl", 'wb')
+        pickle.dump(SXUA, f)
+        f.close()
+        print("compressed and SAVED")
+
+    else:
+        f = open(base + "SXUA.comp.pkl", 'rb')
+        SXUA = pickle.load(f)
+        f.close()
+    print("loaded")
+
+    gc.collect()
+
+    COUNT_TEACHERS=False
+    if COUNT_TEACHERS:
+        ct = Counter()
+        for rix, row in enumerate(assignments.iterrows()):
+            # print(row)
+            oud = row[1]["owner_user_id"]
+            ct[oud]+=1
+        print(ct.most_common(20))
+        exit()
+
+    assignments = assignments[assignments["owner_user_id"]==7062]
+
+    POST_FILTER=False
+    if POST_FILTER:
+        assignments["include"] = False
+        for rix,row in enumerate(assignments.iterrows()):
+            # print(row)
+            aid = row[1]["id"]
+            ts = row[1]["creation_date"]
+            gr_id = row[1]["group_id"]
+            gb_id = row[1]["gameboard_id"]
+            student_ids = list(get_student_list(gr_id)["user_id"])
+            # print(student_ids)
+            # student_data = get_user_data(student_ids)
+            hexes = list(gb_qmap[gb_id])
+            # print(hexes)
+            if len(hexes)==1 and len(student_ids)<=10:
+                assignments.iloc[rix,6] = True
+
+        print(assignments.shape[0])
+        assignments = assignments[assignments["include"]==True]
+        print(assignments.shape[0])
+
+    do_train = True
+    do_testing = True
+    frisch_backen = True
+    ass_n = 1050
+    split = 50
+    n_macroepochs = 1
+    n_epochs = 100
+
+    len_ass = assignments.shape[0]
+    if ass_n<=0 or len_ass<=ass_n:
+        ass_n = len_ass
+
     assignments = assignments[0:ass_n]
 
     # TODO it would be nicer to build this inside the generator object, but currently this is the only place where
@@ -743,22 +729,17 @@ if __name__ == "__main__":
 
     if do_train:
         print("training")
-        model, ylb, qlist, sc = train_deep_model(tr, n_macroepochs, n_epochs, concept_map=concept_map,
-                                                 pid_override=pid_override, bake_fresh=frisch_backen,
-                                                 oac=open_asst_cache)
+        model, sc = train_deep_model(tr, SXUA, n_macroepochs, n_epochs)
         print("...deleted original X,y")
         model.save(base + 'hwg_model.hd5')
-        joblib.dump((ylb, qlist, sc), base + 'hwg_mlb.pkl')
+        joblib.dump(sc, base + 'hwg_mlb.pkl')
         # joblib.dump((sscaler,levscaler,volscaler), base + 'hwg_scaler.pkl')
-
-    input("go")
 
     if do_testing:
         print("testing")
         if model is None:
             model = load_model(base + "hwg_model.hd5")
-            (ylb, qlist, sc) = joblib.load(base + 'hwg_mlb.pkl')
+            sc = joblib.load(base + 'hwg_mlb.pkl')
 
-        evaluate_phybook_loss(tt, model, ylb, sc, concept_map, topic_map,
-                              qid_override=qlist, oac=open_asst_cache)  # , sscaler,levscaler,volscaler)
+        evaluate_phybook_loss(tt, SXUA, model, sc)  # , sscaler,levscaler,volscaler)
         print("DEEP testing done")
