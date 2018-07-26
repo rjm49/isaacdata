@@ -27,7 +27,7 @@ def test_db_connexion():
         return False
     return True
 # DATABASE = test_db_connexion()
-DATABASE=False
+DATABASE=True
 LOAD_FROM_CACHE = True
 SAVE_TO_CACHE = True
 
@@ -148,6 +148,11 @@ def get_page_concepts(pid):
     if raw_df.iloc[0,0] is None:
         return []
     return list( raw_df.iloc[0,0] )
+
+def get_q_names():
+    query = "select question_id, title from content_data"
+    name = "q_names.csv"
+    return make_db_call(query,name)
 
 def get_meta_data():
     query = "select question_id, page_id, level, subject, field, topic, related_questions, related_concepts, detailed_concept_sections from content_data"
