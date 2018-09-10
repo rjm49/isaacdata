@@ -33,8 +33,7 @@ from hwgen.profiler import get_attempts_from_db
 
 use_saved = True
 do_train = False
-do_testing = True
-do_m_testing = True
+do_testing = False
 create_scorecards = True
 
 base = "../../../isaac_data_files/"
@@ -599,9 +598,9 @@ def evaluate_hits_against_asst(ailist, y, max_y, y_preds, ylb):
 #                                                                 top_subjs))
 
 
-def save_class_report_card(ts, aid, gr_id, S, X, U, A, y, m_list, y_preds, slist, q_names_df):
+def save_class_report_card(ts, aid, gr_id, S, X, U, A, y, m_list, y_preds, slist, q_names_df, po_filtered):
 
-    N = y_preds.shape[0]
+    N = len(y_preds)
     print(N)
     sum_preds = numpy.sum(y_preds, axis=0)
     print("sum of sums", numpy.sum(sum_preds))
@@ -648,7 +647,7 @@ def save_class_report_card(ts, aid, gr_id, S, X, U, A, y, m_list, y_preds, slist
         nzixes = x.nonzero()
         # print(nzixes[0])
         for nzix in nzixes[0]:
-            pid = all_page_ids[nzix]
+            pid = po_filtered[nzix]
             visited_pids.append(pid)
         print(visited_pids)
 
@@ -750,7 +749,7 @@ def save_class_report_card(ts, aid, gr_id, S, X, U, A, y, m_list, y_preds, slist
             print(it)
 
         c=1
-        for cv in [psi, int(10 * s[0]) / 10.0, "{:.1f}".format(months_on), str(ndist)+" ("+str(natts)+")", nsucc, assigned, visited_pids, big5, last5, maxlab]:
+        for cv in [psi, int(10 * s[0]) / 10.0, "{:.1f}".format(months_on), str(ndist)+" ("+str(natts)+")", nsucc, assigned, visited_pids, big5, last5, str(mix)+":"+maxlab]:
             if cv == []:
                 cv = "-"
             elif len(str(cv).split("\n")[0])>col_widths[c-1]:
@@ -897,15 +896,14 @@ def create_student_scorecards(tt,sxua, model, sc,fs, load_saved_data=False):
     names_df = get_q_names()
     names_df.index = names_df["question_id"]
 
-    if load_saved_data:
-        aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = joblib.load("tt.data")
-    else:
-        aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(tt, sxua)
-        joblib.dump( (aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list),"tt.data")
+    aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(tt, sxua)
+    joblib.dump( (aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list),"tt.data")
 
     print(x_list.shape)
     x_list = x_list[:, fs]
     print(x_list.shape)
+
+    po_filtered = [all_page_ids[fsix] for fsix in fs]
 
     # for row in tt.iterrows():
     lookup = {}
@@ -934,17 +932,20 @@ def create_student_scorecards(tt,sxua, model, sc,fs, load_saved_data=False):
         sr, sl, xl, ul, al, yl, psil = lookup[aid]
         predictions = []
         for s_raw,s,x,u,psi in zip(sr,sl,xl,ul,psil):
-            s_list.append(s)
-            #x_list.append(x)
-            s_raw_list.append(s_raw)
+            # s_list.append(s)
+            # x_list.append(x)
+            # s_raw_list.append(s_raw)
             m_list.append(s_raw[1])
             print("student {} done".format(psi))
 
             if len(s_list)==0:
                 continue
-            prediction = model.predict([s.reshape(1,-1), x.reshape(1,-1)])
-        predictions.append(prediction)
-        save_class_report_card(ts, aid, gr_id, s_raw_list, xl, ul, al, yl, m_list, predictions, psil, names_df)
+
+        s_arr = numpy.array(sl)
+        x_arr = numpy.array(xl)
+
+        predictions = model.predict([s_arr,x_arr])
+        save_class_report_card(ts, aid, gr_id, s_raw_list, xl, ul, al, yl, m_list, predictions, psil, names_df, po_filtered)
 
     with open("a_ids.txt", "w+") as f:
         f.write("({})\n".format(len(aid_list)))
@@ -1005,6 +1006,7 @@ def evaluate2(tt,sxua, model, sc,fs, load_saved_data=False):
 
 
 def evaluate3(tt,sxua, model, sc,fs, load_saved_data=False):
+    maxdops = 360
     if load_saved_data:
         aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = joblib.load(
             "tt.data")
@@ -1020,7 +1022,10 @@ def evaluate3(tt,sxua, model, sc,fs, load_saved_data=False):
 
     x_list = x_list[:, fs]
     ct = 0
-    dops = [ sr[1] for sr in s_raw_list ]
+    if maxdops:
+        dops = [ sr[1] for sr in s_raw_list if sr[1] <= maxdops ]
+    else:
+        dops = [ sr[1] for sr in s_raw_list ]
     dopdelta = max(dops)
 
     delta_dict = {}
@@ -1028,6 +1033,8 @@ def evaluate3(tt,sxua, model, sc,fs, load_saved_data=False):
     strat_list = ["hwgen","step","lin","random"]
 
     for sl,sr,xl,hxtt,hxtd in zip(s_list,s_raw_list,x_list,hexes_to_try_list, hexes_tried_list):
+        if sr[1] > maxdops:
+            continue
         predictions = model.predict([sl.reshape(1,-1), xl.reshape(1,-1)])
         y_hats = list(reversed(numpy.argsort(predictions)[0]))
         for candix in y_hats:
@@ -1042,7 +1049,8 @@ def evaluate3(tt,sxua, model, sc,fs, load_saved_data=False):
         random_p_hat = choice(options)
         random_y_hat = pid_override.index(random_p_hat)
         step_y_hat = 0 if not hts else min(len(pid_override) - 1, pid_override.index(hts[-1]) + 1)
-        lin_y_hat = int((len(pid_override) - 2) * (sr[1] / dopdelta))
+        #lin_y_hat = int((len(pid_override) - 2) * (sr[1] / dopdelta))
+        lin_y_hat = int((41) * (sr[1] / dopdelta))
 
         # y_trues = []
         # for p_true in sorted(hxtt):
@@ -1070,13 +1078,11 @@ def evaluate3(tt,sxua, model, sc,fs, load_saved_data=False):
         print("{}: mean={} med={} std={}".format(strat, mu, medi, stdev))
         print("Exact = {} of {} = {}".format(exact_ct[strat], ct, (exact_ct[strat]/ct)))
         print("MSE = {}\n".format(numpy.mean(sq_list)))
-    input("dini==")
-
-
+    input("tam")
 
 def evaluate_by_bucket(tt,sxua, model, sc,fs, load_saved_data=False, group_data = None):
-    bucket_step = 1
-    bucket_width = 0
+    bucket_step = 30
+    bucket_width = 7
 
     # first_asst = {}
     all_assts = get_all_assignments()
@@ -1088,7 +1094,7 @@ def evaluate_by_bucket(tt,sxua, model, sc,fs, load_saved_data=False, group_data 
     #             first_asst[psi] = ts
 
 
-    buckets = [i for i in range(650)] #22 for bw 30
+    buckets = [i for i in range(13)] #22 for bw 30
     if load_saved_data:
         aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = joblib.load(
             "tt.data")
@@ -1099,7 +1105,6 @@ def evaluate_by_bucket(tt,sxua, model, sc,fs, load_saved_data=False, group_data 
 
     first_asst = {}
     for psi, aidts in zip(psi_list, ts_list):
-        # print(ts,grid)
         if psi not in first_asst:
             first_asst[psi] = aidts
 
@@ -1135,18 +1140,18 @@ def evaluate_by_bucket(tt,sxua, model, sc,fs, load_saved_data=False, group_data 
         # xl = top_n_of_X(xl,fs)
         predictions = model.predict([sl.reshape(1,-1), xl.reshape(1,-1)])
 
-        actdop = (aidts - first_asst[psi]).days
+        # actdop = (aidts - first_asst[psi]).days
 
         teacher_id = (all_assts[all_assts["group_id"]==grid]["owner_user_id"]).iloc[0]
-        if teacher_id not in anon_tids:
-            anon_tids[teacher_id] = tid_pnt
-            tid_pnt +=1
-        teacher_id = anon_tids[teacher_id]
+        # if teacher_id not in anon_tids:
+        #     anon_tids[teacher_id] = tid_pnt
+        #     tid_pnt +=1
+        # teacher_id = anon_tids[teacher_id]
 
-        if psi not in anon_psis:
-            anon_psis[psi] = psi_pnt
-            psi_pnt +=1
-        psi = anon_psis[psi]
+        # if psi not in anon_psis:
+        #     anon_psis[psi] = psi_pnt
+        #     psi_pnt +=1
+        # psi = anon_psis[psi]
 
         for b in buckets:
             if abs((bucket_step*b) - actdop)<=bucket_width:
@@ -1244,13 +1249,17 @@ def evaluate_by_bucket(tt,sxua, model, sc,fs, load_saved_data=False, group_data 
         print(sm, sm/ct)
 
 
+    bucketx = []
+    buckety = []
     for b in sorted(list(bucket_counter.keys())):
-        print("{},{}".format((max(bucket_width,1)*b),bucket_counter[b]))
-    input("dini==")
+        bucketx.append((max(bucket_width, 1) * b))
+        buckety.append(bucket_counter[b])
+    plt.plot(bucketx, buckety)
+    plt.show()
 
     # apc_df.index = apc_df["assignment"]
     # apc_df.drop("assignment", inplace=True)
-    apc_df.to_csv("apc38_df.csv")
+    apc_df.to_csv("apc38_train_df.csv")
     y_del_vals = []
     y_randels = []
     y_n1dels = []
@@ -1765,6 +1774,13 @@ if __name__ == "__main__":
     n_macroepochs =100
     n_epochs = 100
 
+    # aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = joblib.load(
+    #     "tr.data")
+    # print(len(numpy.unique(aid_list)))
+    # print(len(numpy.unique(psi_list)))
+    # print(len(aid_list))
+    # exit()
+
     if do_train:
         print("training")
         model, fs, sc = train_deep_model(tr, SXUA, n_macroepochs, n_epochs, load_saved_tr=use_saved)
@@ -1782,13 +1798,11 @@ if __name__ == "__main__":
     numpy.set_printoptions(precision=4)
     if do_testing:
         print("testing")
-        # evaluate3(tt, SXUA, model, sc,fs, load_saved_data=use_saved)
+        evaluate3(tt, SXUA, model, sc,fs, load_saved_data=use_saved)
         # input("now class")
         class_ev_lookup = class_evaluation(tt, SXUA, model, sc, fs, load_saved_data=use_saved)
         # evaluate_phybook_loss(tt, SXUA, model, sc, load_saved_data=use_saved)  # , sscaler,levscaler,volscaler)
-        input("DEEP testing done")
-
-    if do_m_testing:
+        # input("DEEP testing done")
         print("m testing")
         evaluate_by_bucket(tt, SXUA, model, sc,fs, load_saved_data=use_saved, group_data=class_ev_lookup)
 
