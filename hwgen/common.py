@@ -27,7 +27,7 @@ def test_db_connexion():
         return False
     return True
 # DATABASE = test_db_connexion()
-DATABASE=True
+DATABASE=False
 LOAD_FROM_CACHE = True
 SAVE_TO_CACHE = True
 
@@ -159,6 +159,12 @@ def get_meta_data():
     name = "meta_data.csv"
     return make_db_call(query,name)
 
+def get_all_qids_from_db():
+    query = "select distinct event_details->>'questionId' AS question_id from logged_events where event_type='ANSWER_QUESTION'"
+    name = "all_qids.csv"
+    raw_df =  make_db_call(query, name)
+    return raw_df
+
 def get_all_assignments():
     query = "select id, gameboard_id, group_id, owner_user_id, creation_date from assignments order by creation_date asc"
     name = "gb_assignments2.csv"
@@ -179,14 +185,17 @@ def make_gb_question_map():
 def init_objects(n_users, path="./config_files/", seed=None):
     qmeta = get_meta_data()
 
+    all_qids = list(get_all_qids_from_db()["question_id"])
+    all_page_ids = list(set([qid.split("|")[0] for qid in all_qids]))
+
     cats = []
     diffs = OrderedDict()
 
     levels = OrderedDict()
     cat_lookup = OrderedDict()
     cat_ixs = OrderedDict()
-    all_qids = []
-    all_page_ids = []
+    # all_qids = []
+    # all_page_ids = []
     for r in qmeta.iterrows():
         r = r[1] # get the data part of the tuple
         q_id = r["question_id"]
@@ -229,7 +238,9 @@ def init_objects(n_users, path="./config_files/", seed=None):
         if qpage not in lev_page_lookup:
             lev_page_lookup[qpage] = L
 
-    return cats, cat_lookup, list(all_qids), None, None, levels, cat_ixs, cat_page_lookup, lev_page_lookup, list(all_page_ids)
+    all_qids = sorted(all_qids)
+    all_page_ids = sorted(all_page_ids)
+    return cats, cat_lookup, all_qids, None, None, levels, cat_ixs, cat_page_lookup, lev_page_lookup, all_page_ids
 
 
 def get_n_hot(name_list, page_ids):

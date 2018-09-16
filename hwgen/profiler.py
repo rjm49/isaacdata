@@ -6,7 +6,7 @@ import numpy
 import pandas as pd
 from pandas._libs.tslib import NaTType
 
-from hwgen.common import extract_runs_w_timestamp_df2, n_components, n_concepts, init_objects, make_db_call
+from hwgen.common import extract_runs_w_timestamp_df2, init_objects, make_db_call
 
 profile_cache="../../../isaac_data_files/profile_cache/"
 LOAD_FROM_CACHE = False
@@ -96,6 +96,7 @@ def profile_student(psi, age, ts, cats, cat_lookup, cat_ixs, levels, concepts_al
 #         print("empty")
 #     return concatd
 
+from_db = True
 
 def get_attempts_from_db(u):
     query = "select user_id, event_details->>'questionId' AS question_id, event_details->>'correct' AS correct, timestamp from logged_events where user_id in ({}) and event_type='ANSWER_QUESTION'"
