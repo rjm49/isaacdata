@@ -7,6 +7,7 @@ from random import choice
 import numpy
 
 import pandas
+from scipy import sparse
 from sklearn.externals import joblib
 
 from hwgen.common import get_student_list, get_user_data, make_gb_question_map, get_all_assignments
@@ -14,14 +15,38 @@ from hwgen.hwgengen2 import build_dob_cache
 from hwgen.profiler import get_attempts_from_db
 
 
-def filter_assignments(assignments, mode):
-    assignments["include"] = True
+def filter_assignments(assignments, mode, max_n=1000):
+    # assignments = assignments[["id","group_id","gameboard_id"]]
+    assignments.loc[:,"include"] = False
+    assignments.index = assignments["id"]
     print(assignments.shape)
     map = make_gb_question_map()
-    for ix in range(assignments.shape[0]):
-        include = True
-        gr_id = assignments.loc[ix, "group_id"]
-        if mode == "book_only":
+    gr_ids = numpy.unique(assignments["group_id"])
+    ct=0
+
+    print("checking for empty groups")
+    gr_ids_keep = {}
+    for grix, gr_id in enumerate(gr_ids):
+        if gr_id in gr_ids_keep:
+            continue
+        gr_ids_keep[gr_id] = False
+        students = get_student_list([gr_id])
+        if not students.empty:
+            for psi in list(students["user_id"]):
+                atts = get_attempts_from_db(psi)
+                if not atts.empty:
+                    gr_ids_keep[gr_id]=True
+                    break
+    print("...done")
+
+    incs = []
+    for ix in assignments["id"]:
+        include=True
+        if not gr_ids_keep[assignments.loc[ix,"group_id"]]:
+            include = False
+        if mode == "all":
+            include = True
+        elif mode == "book_only":
             gb_id = assignments.loc[ix, "gameboard_id"]
             hexes = map[gb_id]
             for hx in hexes:
@@ -37,28 +62,229 @@ def filter_assignments(assignments, mode):
                 if (hx.startswith("ch_") or hx.startswith("ch-i") or hx.startswith("gcse_")):
                     include = False
                     break
-        else:
-            raise ValueError("Unknown book filtering mode")
-        if include:
-            students = get_student_list([gr_id])
-            if students.empty:
-                include = False
-        if include:
-            include = False
-            for psi in list(students["user_id"]):
-                # print("checking",psi)
-                atts = get_attempts_from_db(psi)
-                if not atts.empty:
-                    # print("OK")
-                    include = True
+        elif mode == "no_book_gcse_or_chem":
+            gb_id = assignments.loc[ix, "gameboard_id"]
+            hexes = map[gb_id]
+            for hx in hexes:
+                hx = hx.split("|")[0]
+                if (hx.startswith("ch_") or hx.startswith("ch-i") or hx.startswith("gcse_") or hx.startswith("chem_")):
+                    include = False
                     break
-        if not include:
-            assignments.loc[ix, "include"] = False
+        else:
+            pass
+            # raise ValueError("Unknown book filtering mode")
+
+        incs.append(include)
+
+        if include:
+            ct+=1
+            print(ct)
+        if max_n and ct >= max_n:
+            break
+
+    # padding = [False] * (assignments.shape[0] - len(incs))
+    # incs = incs + padding
+    # assignments[incs,"include"] = True
+    incixes = []
+    for aid,inc in zip(list(assignments["id"]), incs):
+        if inc : incixes.append(aid)
+
+    assignments = assignments[assignments["id"].isin(incixes)]
+
     print(assignments.shape)
     return assignments
 
 
-def augment_data(tr, sxua, filter_by_length=True, pid_map=None, sugg_map=None):
+
+def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
+    gb_qmap = make_gb_question_map()
+    inverse_all_page_ids = {}
+    for pix,pid in enumerate(pid_map):
+        inverse_all_page_ids[pid] = pix
+
+    psi_atts_cache = {}
+
+    aid_list = []
+    s_list = []
+    x_list = []
+    c_list = []
+    u_list = []
+    a_list = []
+    y_list = []
+    psi_list = []
+    hexes_to_try_list = []
+    hexes_tried_list = []
+    s_raw_list = []
+    gr_id_list = []
+    ts_list = []
+
+    fout = open("tr_summ.csv","w")
+    for aid in tr.loc[:,"id"]:
+        azz = tr.loc[aid,:]
+        gr_id = azz["group_id"]
+        ts = azz["creation_date"]
+        student_ids = list(get_student_list(gr_id)["user_id"])
+        print(student_ids)
+        gb_id = azz["gameboard_id"]
+        hexes = set()
+        hexes.update(list(gb_qmap[gb_id]))
+
+        for psi in student_ids:
+            sxua_psi = sxua[psi]
+            S, _, _, A = pickle.loads(zlib.decompress(sxua_psi[ts]))
+            if S[0] < 16 or S[0] > 18:
+                continue
+            hexes_tried = []
+            hexes_to_try = []
+
+
+            Xa = numpy.zeros(shape=len(pid_map), dtype=numpy.bool)
+            Xc = numpy.zeros(shape=len(pid_map), dtype=numpy.uint16)
+            Xm = numpy.zeros(shape=len(pid_map), dtype=numpy.bool)
+            if psi in psi_atts_cache:
+                atts = pickle.loads(zlib.decompress(psi_atts_cache[psi]))
+            else:
+                atts = get_attempts_from_db(psi)
+                psi_atts_cache[psi] = zlib.compress(pickle.dumps(atts))
+
+            fatts = atts[atts["timestamp"] < ts]
+            for qid in fatts["question_id"]:
+                pid = qid.split("|")[0]
+                if pid not in hexes_tried:
+                    if pid in inverse_all_page_ids:
+                        hexes_tried.append(pid)
+                        Xa[inverse_all_page_ids[pid]] = 1
+
+            for qid in fatts["question_id"]:
+                pid = qid.split("|")[0]
+                if pid in inverse_all_page_ids:
+                    Xc[inverse_all_page_ids[pid]] += 1
+
+            natts = fatts.shape[0]
+            ndist = len(set(fatts["question_id"]))
+
+            catts = fatts[fatts["correct"] == True]
+            for qid in fatts["question_id"]:
+                pid = qid.split("|")[0]
+                if pid in inverse_all_page_ids:
+                    Xm[inverse_all_page_ids[pid]] = 1
+
+            nsucc = len(set(catts["question_id"]))
+            dop = S[1]
+            # passrate = nsucc/dop if dop>0 else -1
+            # passprob = nsucc/natts if natts>0 else 0
+            # passprob_perday = passprob / dop if dop>0 else -1
+
+            crapness = dop * natts / (nsucc if nsucc > 0 else 0.1)
+
+            del atts
+            del fatts
+            del catts
+
+
+            for hx in hexes:
+                if hx not in hexes_tried:
+                    hexes_to_try.append(hx)
+
+            y_true = numpy.zeros(len(sugg_map))  # numpy.zeros(len(all_page_ids))
+            hexes_to_try = sorted(hexes_to_try)
+            # for hx in sorted(hexes_to_try):
+            # hx = sorted(hexes_to_try)[ (len(hexes_to_try)-1)//2 ]
+
+            hexes_to_try = [hx for hx in hexes_to_try if hx in sugg_map]
+            if hexes_to_try == []:
+                print("no hexes to try")
+                continue
+
+            # y_trues = None
+            TARGET_MODE = "random"
+            # if TARGET_MODE=="repeat":
+            #     hx_ct = 0
+            #     y_trues = []
+            #     for hx in hexes_to_try:
+            #         hxix = sugg_map.index(hx)
+            #         y_true[hxix] = 1.0
+            #         y_trues.append(copy(y_true))
+            #         hx_ct += 1
+            if TARGET_MODE == "random":
+                hx = choice(hexes_to_try)
+                hxix = sugg_map.index(hx)
+                y_true[hxix] = 1.0
+            elif TARGET_MODE == "decision_weighted":
+                for hx in hexes_to_try:
+                    hxix = sugg_map.index(hx)
+                    y_true[hxix] = 1.0 / len(hexes_to_try)
+            elif TARGET_MODE == "no_weight":
+                for hx in hexes_to_try:
+                    hxix = sugg_map.index(hx)
+                    y_true[hxix] = 1.0
+            elif TARGET_MODE == "first":
+                hx = sorted(hexes_to_try)[0]
+                hxix = sugg_map.index(hx)
+                y_true[hxix] = 1.0
+            elif TARGET_MODE == "middle":
+                hx = sorted(hexes_to_try)[(len(hexes_to_try) - 1) // 2]
+                hxix = sugg_map.index(hx)
+                y_true[hxix] = 1.0
+            else:
+                raise ValueError("'{}' is not a valid target mode!".format(TARGET_MODE))
+
+            print("hexes t try: {}".format(hexes_to_try))
+            print("hexes      : {}".format(hexes))
+
+            aid_list.append(aid)
+            s_raw_list.append(S)
+
+            # age_1dp = int(10.0*S[0])/10.0
+            onedp = lambda z: int(10.0 * z) / 10.0
+            # nsucc = int(10.0 *nsucc / age_1dp)/10.0
+            # s_list.append([(int(10*S[0])/10.0), S[1], natts, ndist, nsucc])
+            # s_list.append([natts, ndist, nsucc])
+            Sa = [onedp(S[0]), dop, natts, ndist, nsucc]
+            # Sa = [0]
+
+            # y_trues = [y_true] if (y_trues is None) else y_trues
+            # for y_true in y_trues:
+            s_list.append(Sa)  # (nsucc/natts if natts>0 else 0)])
+            x_list.append(Xa)
+            # c_list.append(Xc)
+            # u_list.append(Xm)
+            c_list.append([0])
+            u_list.append([0])
+            # a_list.append(A)
+            a_list.append([0])
+            y_list.append(y_true)
+            psi_list.append(psi)
+            hexes_to_try_list.append(hexes_to_try)
+            hexes_tried_list.append(hexes_tried)
+            gr_id_list.append(gr_id)
+            ts_list.append(ts)
+            fout.write("{},{},{},{},{},{},\"{}\",\"{}\"\n".format(ts, gr_id, psi, ",".join(map(str, Sa)), sum(Xa), sum(Xa > 0), "\n".join(hexes_tried), "\n".join(hexes_to_try)))
+
+            # ,\"{}\",\"{}\"\n".format(ts, gr_id, psi, ",".join(map(str, Sa)), Xa.sum(), numpy.sum(Xa > 0),
+            #                                        "\n".join(hexes_tried), "\n".join(hexes_to_try)))
+    fout.close()
+    gc.collect()
+
+    s_list = numpy.array(s_list)
+    x_list = numpy.array(x_list, dtype=numpy.bool)
+    # c_list = numpy.array(c_list, dtype=numpy.uint16)
+    # u_list = numpy.array(u_list, dtype=numpy.bool)
+    # a_list = numpy.array(a_list, dtype=numpy.bool)
+    y_list = numpy.array(y_list)
+    # psi_list = numpy.array(psi_list)
+    # s_list = sparse.csr_matrix(s_list)
+    # x_list = sparse.csr_matrix(x_list, dtype=numpy.bool)
+    # c_list = sparse.csr_matrix(c_list, dtype=numpy.uint16)
+    # u_list = sparse.csr_matrix(u_list, dtype=numpy.bool)
+    # a_list = sparse.csr_matrix(a_list, dtype=numpy.bool)
+    # y_list = sparse.csr_matrix(y_list)
+    psi_list = sparse.csr_matrix(psi_list)
+
+    return aid_list, s_list, x_list, c_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list
+
+
+def augment_data_old(tr, sxua, filter_by_length=True, pid_map=None, sugg_map=None):
     bermuda_hexes = set()
     gb_qmap = make_gb_question_map()
 
@@ -72,6 +298,7 @@ def augment_data(tr, sxua, filter_by_length=True, pid_map=None, sugg_map=None):
     aid_list = []
     s_list = []
     x_list = []
+    c_list = []
     u_list = []
     a_list = []
     y_list = []
@@ -84,15 +311,16 @@ def augment_data(tr, sxua, filter_by_length=True, pid_map=None, sugg_map=None):
 
     fout = open("tr_summ.csv","w")
 
-    s_filter = set()
-    for gr_id in group_ids:
-        gr_ass = tr[tr["group_id"] == gr_id]
-        student_ids = list(get_student_list(gr_id)["user_id"])
-        tss = sorted(list(set(gr_ass["creation_date"])))
-        if filter_by_length and len(tss)<5:
-            pass
-        else:
-            s_filter.update(student_ids)
+    psis_not_to_include = set()
+    if filter_by_length:
+        for gr_id in group_ids:
+            gr_ass = tr[tr["group_id"] == gr_id]
+            student_ids = list(get_student_list(gr_id)["user_id"])
+            tss = sorted(list(set(gr_ass["creation_date"])))
+            if len(tss)<5:
+                pass
+            else:
+                psis_not_to_include.update(student_ids)
 
     group_track = {}
     for gr_id in group_ids:
@@ -109,7 +337,7 @@ def augment_data(tr, sxua, filter_by_length=True, pid_map=None, sugg_map=None):
                 hexes.update(list(gb_qmap[gb_id]))
 
             for psi in student_ids:
-                if psi not in s_filter:
+                if psi not in psis_not_to_include:
                     continue
 
                 if psi in group_track and group_track[psi]!=gr_id:
@@ -119,7 +347,7 @@ def augment_data(tr, sxua, filter_by_length=True, pid_map=None, sugg_map=None):
                     group_track[psi]=gr_id
 
                 sxua_psi = sxua[psi]
-                S,_,U,A = pickle.loads(zlib.decompress(sxua_psi[ts]))
+                S,_,_,A = pickle.loads(zlib.decompress(sxua_psi[ts]))
                 if S[0]<16 or S[0]>18: #i.e. if student has no valid age TODO honolulu
                     continue
                 # if S[1]==0: #no time in platform
@@ -133,12 +361,14 @@ def augment_data(tr, sxua, filter_by_length=True, pid_map=None, sugg_map=None):
                 #     hexes_to_try = hexes
                 # else:
 
-                Xa = numpy.zeros(shape=len(pid_map))
+                Xa = numpy.zeros(shape=len(pid_map), dtype=numpy.bool)
+                Xc = numpy.zeros(shape=len(pid_map), dtype=numpy.uint16)
+                Xm = numpy.zeros(shape=len(pid_map), dtype=numpy.bool)
                 if psi in psi_atts_cache:
-                    atts = psi_atts_cache[psi]
+                    atts = pickle.loads(zlib.decompress(psi_atts_cache[psi]))
                 else:
                     atts = get_attempts_from_db(psi)
-                    psi_atts_cache[psi]=atts
+                    psi_atts_cache[psi]=zlib.compress(pickle.dumps(atts))
 
                 fatts = atts[atts["timestamp"] < ts]
                 for qid in fatts["question_id"]:
@@ -148,9 +378,23 @@ def augment_data(tr, sxua, filter_by_length=True, pid_map=None, sugg_map=None):
                             hexes_tried.append(pid)
                             Xa[inverse_all_page_ids[pid]]=1
 
+                for qid in fatts["question_id"]:
+                    pid = qid.split("|")[0]
+                    if pid in inverse_all_page_ids:
+                        hexes_tried.append(pid)
+                        Xc[inverse_all_page_ids[pid]]+=1
+
                 natts = fatts.shape[0]
-                nsucc = len(set(fatts[fatts["correct"] == True]["question_id"]))
                 ndist = len(set(fatts["question_id"]))
+
+                catts = fatts[fatts["correct"]==True]
+                for qid in fatts["question_id"]:
+                    pid = qid.split("|")[0]
+                    if pid in inverse_all_page_ids:
+                        hexes_tried.append(pid)
+                        Xm[inverse_all_page_ids[pid]]=1
+
+                nsucc = len(set(catts["question_id"]))
                 dop = S[1]
                 # passrate = nsucc/dop if dop>0 else -1
                 # passprob = nsucc/natts if natts>0 else 0
@@ -158,7 +402,9 @@ def augment_data(tr, sxua, filter_by_length=True, pid_map=None, sugg_map=None):
 
                 crapness = dop * natts / (nsucc if nsucc > 0 else 0.1)
 
+                del atts
                 del fatts
+                del catts
 
                 for hx in hexes:
                     if hx not in hexes_tried:
@@ -211,8 +457,6 @@ def augment_data(tr, sxua, filter_by_length=True, pid_map=None, sugg_map=None):
                 else:
                     raise ValueError("'{}' is not a valid target mode!".format(TARGET_MODE))
 
-                X=Xa
-
                 print("hexes t try: {}".format(hexes_to_try))
                 print("hexes      : {}".format(hexes))
 
@@ -230,8 +474,9 @@ def augment_data(tr, sxua, filter_by_length=True, pid_map=None, sugg_map=None):
                 # y_trues = [y_true] if (y_trues is None) else y_trues
                 # for y_true in y_trues:
                 s_list.append(Sa)# (nsucc/natts if natts>0 else 0)])
-                x_list.append(X)
-                u_list.append(U)
+                x_list.append(Xa)
+                c_list.append(Xc)
+                u_list.append(Xm)
                 a_list.append(A)
                 y_list.append(y_true)
                 psi_list.append(psi)
@@ -240,25 +485,28 @@ def augment_data(tr, sxua, filter_by_length=True, pid_map=None, sugg_map=None):
                 gr_id_list.append(gr_id)
                 ts_list.append(ts)
 
-                fout.write("{},{},{},{},{},{},{},\"{}\",\"{}\"\n".format(ts,gr_id,psi,",".join(map(str,Sa)), X.sum(), numpy.sum(X>0), numpy.sum(U), "\n".join(hexes_tried), "\n".join(hexes_to_try)))
+                fout.write("{},{},{},{},{},{},\"{}\",\"{}\"\n".format(ts,gr_id,psi,",".join(map(str,Sa)), Xa.sum(), numpy.sum(Xa>0), "\n".join(hexes_tried), "\n".join(hexes_to_try)))
+        gc.collect()
     fout.close()
     # exit()
     # input("nibit")
     gc.collect()
 
     s_list = numpy.array(s_list)
-    x_list = numpy.array(x_list, dtype=numpy.int16)
+    x_list = numpy.array(x_list, dtype=numpy.bool)
+    c_list = numpy.array(c_list, dtype=numpy.uint16)
     # print(x_list.shape)
     # x_mask = numpy.nonzero(numpy.any(x_list != 0, axis=0))[0]
     # x_list = x_list[:, x_mask]
     # print(x_list.shape)
-    u_list = numpy.array(u_list, dtype=numpy.int8)
-    a_list = numpy.array(a_list, dtype=numpy.int8)
+    u_list = numpy.array(u_list, dtype=numpy.bool)
+    # a_list = numpy.array(a_list, dtype=numpy.int8)
     y_list = numpy.array(y_list)
     psi_list = numpy.array(psi_list)
     print("bermudean hexes are:")
     print(bermuda_hexes)
-    return aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list
+
+    return aid_list, s_list, x_list, c_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list
 
 def populate_student_cache(assignments):
     group_ids = pandas.unique(assignments["group_id"])

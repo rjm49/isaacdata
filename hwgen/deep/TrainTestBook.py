@@ -121,14 +121,13 @@ def make_phybook_model(n_S, n_X, n_U, n_A, n_P, lr):
     #w100: 17% to beat
     do=.2
 
-    input_U = Input(shape=(n_X,), name="u_input")
-    inner_U = Dense(300, activation="relu")(input_U)
+    input_X = Input(shape=(n_X,), name="u_input")
+    inner_X = Dense(300, activation="relu")(input_X)
 
     if n_S is not None:
-        # hidden = concatenate([inner_U, inner_S])
-        hidden = concatenate([inner_U, inner_S])
+        hidden = concatenate([inner_X, inner_S])
     else:
-        hidden = inner_U
+        hidden = inner_X
 
     # hidden = Dense(w, activation='relu')(hidden)
     # hidden = Dropout(.2)(hidden)
@@ -143,9 +142,9 @@ def make_phybook_model(n_S, n_X, n_U, n_A, n_P, lr):
     # m = Model(inputs=[input_S, input_U], outputs=[next_pg, output_U])
     # m.compile(optimizer=o, loss=["binary_crossentropy","binary_crossentropy"], metrics={'next_pg':["binary_accuracy", "top_k_categorical_accuracy"], 'outAuto':['binary_accuracy']})
     if n_S is not None:
-        ins = [input_S, input_U]
+        ins = [input_S, input_X]
     else:
-        ins = input_U
+        ins = input_X
 
     m = Model(inputs=ins, outputs=[next_pg])
     m.compile(optimizer=o, loss='categorical_crossentropy', metrics={'next_pg':['acc', 'top_k_categorical_accuracy']})
@@ -231,7 +230,7 @@ def top_n_of_X(X, fs):
         return Xa
 
 
-def train_deep_model(tr, sxua, qid_map, pid_map, sugg_map, n_macroepochs=100, n_epochs=10, use_linear=False, load_saved_tr=False, filter_by_length=True):
+def train_deep_model(tr, sxua, qid_map, pid_map, sugg_map, n_macroepochs=100, n_epochs=10, use_linear=False, load_saved_tr=False, filter_by_length=True, model_generator=make_phybook_model,):
     model = None
     fs = None
     if load_saved_tr:
@@ -315,17 +314,17 @@ def train_deep_model(tr, sxua, qid_map, pid_map, sugg_map, n_macroepochs=100, n_
         # x_list = top_n_of_X(x_list, fs)
         # S,X,U,A = s_list[0], x_list[0], u_list[0], a_list[0]
         # print(S.shape, X.shape, U.shape, A.shape, y_list.shape)
-        S,X = s_list[0], x_list[0]
+        S,X,U = s_list[0], x_list[0], u_list[0]
 
         es = EarlyStopping(monitor='loss', patience=0, verbose=0, mode='auto')
         # cves = EarlyStopping(monitor='acc', patience=1, verbose=0, mode='auto')
         # for BS in [50, 64, 100]:
         #     for LR in [0.003, 0.0025, 0.002]:
-        # for BS in [40,50,60,70,80]:
+        # for BS in [16,32,64,128]:
         for BS in [32]: #80
-            # for LR in [0.0015, 0.002, 0.0025, 0.003, 0.0035]:
+            # for LR in [0.0001, 0.001, 0.01, 0.1]:
             for LR in [0.001]: #0.0015
-                model = make_phybook_model(S.shape[0], X.shape[0], None, None, y_list.shape[1], lr=LR)
+                model = model_generator(S.shape[0], X.shape[0], U.shape[0], None, y_list.shape[1], lr=LR)
                 # es = EarlyStopping(monitor='categorical_accuracy', patience=0, verbose=0, mode='auto')
                 # history = model.fit([s_list, x_list], [y_list, x_list], verbose=1, epochs=100, callbacks=[es], shuffle=True, batch_size=32)
 
@@ -351,17 +350,21 @@ def train_deep_model(tr, sxua, qid_map, pid_map, sugg_map, n_macroepochs=100, n_
                     max_acc = scores[1]
                 print(scores)
 
-            do_plot = False
+            do_plot = True
             if do_plot:
-                pyplot.plot(history.history['acc'])
-                # pyplot.plot(history.history['binary_crossentropy'])
-                # pyplot.plot(history.history['categorical_crossentropy'])
-                pyplot.plot(history.history['top_k_categorical_accuracy'])
-                pyplot.plot(history.history['loss'])
-                pyplot.plot(history.history['val_acc'])
-                pyplot.plot(history.history['val_loss'])
-                pyplot.legend(["cat acc","top k acc","loss","val cat acc","val loss"])
-                pyplot.show()
+                try:
+                    pyplot.plot(history.history['acc'])
+                    # pyplot.plot(history.history['binary_crossentropy'])
+                    # pyplot.plot(history.history['categorical_crossentropy'])
+                    pyplot.plot(history.history['top_k_categorical_accuracy'])
+                    pyplot.plot(history.history['loss'])
+                    pyplot.plot(history.history['val_acc'])
+                    pyplot.plot(history.history['val_loss'])
+                    pyplot.legend(["cat acc","top k acc","loss","val cat acc","val loss"])
+                    pyplot.show()
+                except:
+                    print("some problem occurred during plot .. ignoring")
+                    pass
 
         max_acc_ix = accs.index(max(accs))
         print((max(accs), lrs[max_acc_ix], BSs[max_acc_ix]))

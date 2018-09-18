@@ -6,8 +6,8 @@ import pandas
 from hwgen.common import get_all_assignments, init_objects
 from keras.models import load_model
 from sklearn.externals import joblib
-from hwgen.deep.TrainTestBook import create_student_scorecards, train_deep_model
 from hwgen.deep.preproc import build_SXUA, populate_student_cache, filter_assignments
+from hwgen.hwgen_mentoring_utils import make_mentoring_model, train_deep_model, create_student_scorecards
 
 base = "/home/rjm49/isaac_data_files/"
 n_users = -1
@@ -22,30 +22,33 @@ for ix in range(20):
 #     print(pid)
 
 target_group_ids = [7680, 7681, 7682]
-assignments = get_all_assignments()
-assignments["creation_date"] = pandas.to_datetime(assignments["creation_date"])
+
+
+# assignments = assignments[assignments["group_id"].isin(target_group_ids)]
+
+LOAD_PREVIOUS_ASSIGNMENTS =False
+ass_fname = "filtered_assts.pkl"
+if LOAD_PREVIOUS_ASSIGNMENTS:
+    assignments = joblib.load(base+ass_fname)
+else:
+    assignments = get_all_assignments()
+    assignments.loc[:,"creation_date"] = pandas.to_datetime(assignments.loc[:,"creation_date"])
+    joblib.dump(assignments, (base + ass_fname))
+
+tr = assignments[~assignments["group_id"].isin(target_group_ids)]
+# tr = tr.sample(n=10000, replace=False)
+tt = assignments[assignments["group_id"].isin(target_group_ids)]
+
+print("pre filter", assignments.shape)
+tr = filter_assignments(tr, mode="all", max_n=1000)
+print("tr filtered")
+# tr = tr[tr["include"] == True]
+print("post filter", tr.shape)
 
 LOAD_PSI_CACHE = False
 if LOAD_PSI_CACHE:
     populate_student_cache(assignments)
     exit()
-
-# assignments = assignments[assignments["group_id"].isin(target_group_ids)]
-
-N = len(assignments)
-LOAD_PREVIOUS_ASSIGNMENTS = True
-ass_fname = "filtered_assts.pkl"
-if LOAD_PREVIOUS_ASSIGNMENTS:
-    assignments = joblib.load(base+ass_fname)
-else:
-    print("pre filter", assignments.shape)
-    assignments = filter_assignments(assignments, mode="non_book_only")
-    assignments = assignments[assignments["include"] == True]
-    print("post filter", assignments.shape)
-    joblib.dump(assignments, (base + ass_fname))
-
-tr = assignments[~assignments["group_id"].isin(target_group_ids)]
-tt = assignments[assignments["group_id"].isin(target_group_ids)]
 
 print(tr.shape, tt.shape)
 
@@ -57,11 +60,12 @@ if BUILD_SXUA:
 else:
     SXUA = joblib.load(sxua_file)
 
-do_train=False
+do_train=True
 fs = None
 if do_train:
     print("training")
-    model, _, sc = train_deep_model(tr, SXUA, all_qids, all_page_ids, all_page_ids, 10, 10, load_saved_tr=False, filter_by_length=True)
+    model_genr = make_mentoring_model
+    model, _, sc = train_deep_model(tr, SXUA, all_qids, all_page_ids, all_page_ids, 10, 10, load_saved_tr=False, filter_by_length=True, model_generator=model_genr)
     print("...deleted original X,y")
     model.save(base + 'hwg_model.hd5')
     # joblib.dump(fs, base + 'hwg_fs.pkl')
