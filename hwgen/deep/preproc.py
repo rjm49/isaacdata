@@ -1,6 +1,8 @@
+import datetime
 import gc
 import pickle
 import zlib
+from collections import Counter
 from copy import copy
 from random import choice
 
@@ -10,16 +12,26 @@ import pandas
 from scipy import sparse
 from sklearn.externals import joblib
 
-from hwgen.common import get_student_list, get_user_data, make_gb_question_map, get_all_assignments
-from hwgen.hwgengen2 import build_dob_cache
+from hwgen.common import get_student_list, get_user_data, make_gb_question_map, get_all_assignments, build_dob_cache
 from hwgen.profiler import get_attempts_from_db
 
 
-def filter_assignments(assignments, mode, max_n=1000):
+def filter_assignments(assignments, mode, max_n=1000, top_teachers_first=True):
     # assignments = assignments[["id","group_id","gameboard_id"]]
-    assignments.loc[:,"include"] = False
+    # assignments.loc[:,"include"] = False
     assignments.index = assignments["id"]
     print(assignments.shape)
+
+    tx_list = list(numpy.unique(assignments["owner_user_id"]))
+    if top_teachers_first:
+        teacher_ct = Counter()
+        for t in tx_list:
+            t_assignments = assignments[assignments["owner_user_id"] == t]
+            teacher_ct[t] = t_assignments.shape[0]
+        print(teacher_ct.most_common(20))
+        print("teachers counted")
+        tx_list = [tx for tx,c in teacher_ct.most_common()]
+
     map = make_gb_question_map()
     gr_ids = numpy.unique(assignments["group_id"])
     ct=0
@@ -40,60 +52,80 @@ def filter_assignments(assignments, mode, max_n=1000):
     print("...done")
 
     incs = []
-    for ix in assignments["id"]:
-        include=True
-        if not gr_ids_keep[assignments.loc[ix,"group_id"]]:
-            include = False
-        if mode == "all":
-            include = True
-        elif mode == "book_only":
-            gb_id = assignments.loc[ix, "gameboard_id"]
-            hexes = map[gb_id]
-            for hx in hexes:
-                hx = hx.split("|")[0]
-                if not (hx.startswith("ch_") or hx.startswith("ch-i")):
-                    include = False
-                    break
-        elif mode == "non_book_only":
-            gb_id = assignments.loc[ix, "gameboard_id"]
-            hexes = map[gb_id]
-            for hx in hexes:
-                hx = hx.split("|")[0]
-                if (hx.startswith("ch_") or hx.startswith("ch-i") or hx.startswith("gcse_")):
-                    include = False
-                    break
-        elif mode == "no_book_gcse_or_chem":
-            gb_id = assignments.loc[ix, "gameboard_id"]
-            hexes = map[gb_id]
-            for hx in hexes:
-                hx = hx.split("|")[0]
-                if (hx.startswith("ch_") or hx.startswith("ch-i") or hx.startswith("gcse_") or hx.startswith("chem_")):
-                    include = False
-                    break
-        else:
-            pass
-            # raise ValueError("Unknown book filtering mode")
+    for tx in tx_list:
+        for aid in assignments[assignments["owner_user_id"]==tx]["id"]:
+            include=True
+            if not gr_ids_keep[assignments.loc[aid,"group_id"]]:
+                include = False
+            if mode == "all":
+                include = True
+            elif mode == "book_only":
+                gb_id = assignments.loc[aid, "gameboard_id"]
+                hexes = map[gb_id]
+                for hx in hexes:
+                    hx = hx.split("|")[0]
+                    if not (hx.startswith("ch_") or hx.startswith("ch-i")):
+                        print("found hx {} in aid {} - discarding!".format(hx,aid))
+                        include = False
+                        break
+            elif mode == "non_book_only":
+                gb_id = assignments.loc[aid, "gameboard_id"]
+                hexes = map[gb_id]
+                for hx in hexes:
+                    hx = hx.split("|")[0]
+                    if (hx.startswith("ch_") or hx.startswith("ch-i") or hx.startswith("gcse_")):
+                        include = False
+                        break
+            elif mode == "no_book_gcse_or_chem":
+                gb_id = assignments.loc[aid, "gameboard_id"]
+                hexes = map[gb_id]
+                for hx in hexes:
+                    hx = hx.split("|")[0]
+                    if (hx.startswith("ch_") or hx.startswith("ch-i") or hx.startswith("gcse_") or hx.startswith("chem_")):
+                        include = False
+                        break
+            else:
+                pass
+                # raise ValueError("Unknown book filtering mode")
 
-        incs.append(include)
+            if include:
+                incs.append(aid)
+                ct+=1
+                print(ct)
 
-        if include:
-            ct+=1
-            print(ct)
-        if max_n and ct >= max_n:
-            break
+            if max_n and ct >= max_n:
+                break
 
     # padding = [False] * (assignments.shape[0] - len(incs))
     # incs = incs + padding
     # assignments[incs,"include"] = True
-    incixes = []
-    for aid,inc in zip(list(assignments["id"]), incs):
-        if inc : incixes.append(aid)
+    # incixes = []
+    # for aid,inc in zip(list(assignments["id"]), incs):
+    #     if inc : incixes.append(aid)
 
-    assignments = assignments[assignments["id"].isin(incixes)]
+    #print(incs)
+    filtered = assignments[assignments["id"].isin(incs)]
 
-    print(assignments.shape)
-    return assignments
+    # for gb_id in assignments["gameboard_id"]:
+    #     hexes = map[gb_id]
+    #     print(hexes)
 
+    print(filtered.shape)
+    return filtered
+
+# def collapse_timestamps(tr):
+#     gb_qmap = make_gb_question_map()
+#     tr['just_date'] = tr['creation_date'].dt.date
+#     gr_date_map = {}
+#     for aid in tr.loc[:,"id"]:
+#         azz = tr.loc[aid,:]
+#         gr_id = azz["group_id"]
+#         ts = azz["just_date"]
+#         student_ids = list(get_student_list(gr_id)["user_id"])
+#         print(student_ids)
+#         gb_id = azz["gameboard_id"]
+#         hexes = set()
+#         hexes.update(list(gb_qmap[gb_id]))
 
 
 def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
@@ -118,7 +150,10 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
     gr_id_list = []
     ts_list = []
 
-    fout = open("tr_summ.csv","w")
+    tr.index = tr["id"]
+
+    now_dt = datetime.datetime.now()
+    fout = open("aug_{}.csv".format(now_dt),"w")
     for aid in tr.loc[:,"id"]:
         azz = tr.loc[aid,:]
         gr_id = azz["group_id"]
@@ -128,6 +163,7 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
         gb_id = azz["gameboard_id"]
         hexes = set()
         hexes.update(list(gb_qmap[gb_id]))
+        print("hexes:", hexes)
 
         for psi in student_ids:
             sxua_psi = sxua[psi]
@@ -136,7 +172,6 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
                 continue
             hexes_tried = []
             hexes_to_try = []
-
 
             Xa = numpy.zeros(shape=len(pid_map), dtype=numpy.bool)
             Xc = numpy.zeros(shape=len(pid_map), dtype=numpy.uint16)
@@ -150,21 +185,17 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
             fatts = atts[atts["timestamp"] < ts]
             for qid in fatts["question_id"]:
                 pid = qid.split("|")[0]
-                if pid not in hexes_tried:
-                    if pid in inverse_all_page_ids:
-                        hexes_tried.append(pid)
-                        Xa[inverse_all_page_ids[pid]] = 1
-
-            for qid in fatts["question_id"]:
-                pid = qid.split("|")[0]
                 if pid in inverse_all_page_ids:
                     Xc[inverse_all_page_ids[pid]] += 1
+                    if pid not in hexes_tried:
+                        hexes_tried.append(pid)
+                        Xa[inverse_all_page_ids[pid]] = 1
 
             natts = fatts.shape[0]
             ndist = len(set(fatts["question_id"]))
 
             catts = fatts[fatts["correct"] == True]
-            for qid in fatts["question_id"]:
+            for qid in catts["question_id"]:
                 pid = qid.split("|")[0]
                 if pid in inverse_all_page_ids:
                     Xm[inverse_all_page_ids[pid]] = 1
@@ -197,7 +228,7 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
                 continue
 
             # y_trues = None
-            TARGET_MODE = "random"
+            TARGET_MODE = "decision_weighted"
             # if TARGET_MODE=="repeat":
             #     hx_ct = 0
             #     y_trues = []
@@ -229,8 +260,8 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
             else:
                 raise ValueError("'{}' is not a valid target mode!".format(TARGET_MODE))
 
-            print("hexes t try: {}".format(hexes_to_try))
-            print("hexes      : {}".format(hexes))
+            # print("hexes t try: {}".format(hexes_to_try))
+            # print("hexes      : {}".format(hexes))
 
             aid_list.append(aid)
             s_raw_list.append(S)
@@ -252,14 +283,14 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
             c_list.append([0])
             u_list.append([0])
             # a_list.append(A)
-            a_list.append([0])
+            a_list.append(A)
             y_list.append(y_true)
             psi_list.append(psi)
             hexes_to_try_list.append(hexes_to_try)
             hexes_tried_list.append(hexes_tried)
             gr_id_list.append(gr_id)
             ts_list.append(ts)
-            fout.write("{},{},{},{},{},{},\"{}\",\"{}\"\n".format(ts, gr_id, psi, ",".join(map(str, Sa)), sum(Xa), sum(Xa > 0), "\n".join(hexes_tried), "\n".join(hexes_to_try)))
+            fout.write("{},{},{},{},{},{},{},\"{}\",\"{}\"\n".format(ts, gr_id, psi, ",".join(map(str, Sa)), sum(Xa), sum(Xm), sum(Xc), "\n".join(hexes_tried), "\n".join(hexes_to_try)))
 
             # ,\"{}\",\"{}\"\n".format(ts, gr_id, psi, ",".join(map(str, Sa)), Xa.sum(), numpy.sum(Xa > 0),
             #                                        "\n".join(hexes_tried), "\n".join(hexes_to_try)))
@@ -270,7 +301,7 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
     x_list = numpy.array(x_list, dtype=numpy.bool)
     # c_list = numpy.array(c_list, dtype=numpy.uint16)
     # u_list = numpy.array(u_list, dtype=numpy.bool)
-    # a_list = numpy.array(a_list, dtype=numpy.bool)
+    a_list = numpy.array(a_list, dtype=numpy.bool)
     y_list = numpy.array(y_list)
     # psi_list = numpy.array(psi_list)
     # s_list = sparse.csr_matrix(s_list)
@@ -279,7 +310,7 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
     # u_list = sparse.csr_matrix(u_list, dtype=numpy.bool)
     # a_list = sparse.csr_matrix(a_list, dtype=numpy.bool)
     # y_list = sparse.csr_matrix(y_list)
-    psi_list = sparse.csr_matrix(psi_list)
+    psi_list = numpy.array(psi_list)
 
     return aid_list, s_list, x_list, c_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list
 

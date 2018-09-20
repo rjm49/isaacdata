@@ -27,7 +27,7 @@ def test_db_connexion():
         return False
     return True
 # DATABASE = test_db_connexion()
-DATABASE=False
+DATABASE=True
 LOAD_FROM_CACHE = True
 SAVE_TO_CACHE = True
 
@@ -182,6 +182,44 @@ def make_gb_question_map():
         map[gb_id] = qs
     return map
 
+def ass_extract(ass):
+    id = ass[1]["id"]
+    ts = ass[1]['creation_date']
+    gb_id = ass[1]["gameboard_id"]
+    gr_id = ass[1]["group_id"]
+    return id,ts,gb_id,gr_id
+
+def get_age_df(ts, gr_df):
+    age_df = pandas.DataFrame(index=gr_df["id"], columns=["dob","delta","age"])
+    dobs = gr_df["date_of_birth"]
+    age_df["dob"] = list(dobs)
+    return age_df
+
+
+def build_dob_cache(assts):
+    dob_cache = {}
+    for ix, ass in enumerate(assts.iterrows()):
+        id, ts, gb_id, gr_id = ass_extract(ass)
+        students = list(get_student_list(gr_id)["user_id"])
+        # print("#{}: PREP: grp {} at {}".format(ix, gr_id, ts))
+        group_df = get_user_data(students)
+        for psi in students:
+            dob = None
+            if psi not in dob_cache:
+                # print("age gen...")
+                age_df = get_age_df(ts, group_df)
+                # age_df["dob"] = pandas.to_datetime(age_df["dob"])
+                # age = age_df.loc[psi, "age"]
+                for psi_inner in students:
+                    dob = age_df.loc[psi_inner,"dob"]
+                    # print(type(dob))
+                    if isinstance(dob, pandas.Timestamp):
+                        dob_cache[psi_inner] = dob
+                    else:
+                        dob_cache[psi_inner] = None
+    return dob_cache
+
+
 def init_objects(n_users, path="./config_files/", seed=None):
     qmeta = get_meta_data()
 
@@ -240,8 +278,7 @@ def init_objects(n_users, path="./config_files/", seed=None):
 
     all_qids = sorted(all_qids)
     all_page_ids = sorted(all_page_ids)
-    return cats, cat_lookup, all_qids, None, None, levels, cat_ixs, cat_page_lookup, lev_page_lookup, all_page_ids
-
+    return cats, cat_lookup, all_qids, levels, cat_ixs, cat_page_lookup, lev_page_lookup, all_page_ids
 
 def get_n_hot(name_list, page_ids):
     arr = numpy.zeros(len(page_ids))

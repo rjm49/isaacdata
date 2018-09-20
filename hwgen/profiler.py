@@ -12,7 +12,7 @@ profile_cache="../../../isaac_data_files/profile_cache/"
 LOAD_FROM_CACHE = False
 SAVE_TO_CACHE = True
 
-cats, cat_lookup, all_qids, users, diffs, levels, cat_ixs, cat_page_lookup, level_page_lookup, all_page_ids = init_objects(-1)
+cats, cat_lookup, all_qids, levels, cat_ixs, cat_page_lookup, level_page_lookup, all_page_ids = init_objects(-1)
 
 def profile_student(psi, age, ts, cats, cat_lookup, cat_ixs, levels, concepts_all, df, cache, attempts_df=None):
     pf = profile_student_enc(psi, age, ts, cats, cat_lookup, cat_ixs, levels, concepts_all, df, cache, attempts_df)
@@ -112,35 +112,6 @@ def get_attempts_from_db(u):
 from_db = True
 
 
-def get_age_df(ts, gr_df):
-    #Start by setting the system default age
-    #default_age = 16.9
-    # DPY = 365.242
-
-    # genesis = pd.to_datetime("1970-01-01")
-    # dobseries = gr_df[(gr_df.role == "STUDENT")]["date_of_birth"]
-    # dobseries.dropna(inplace=True)
-
-    # class_avg_del = (dobseries - genesis).median()
-    # if class_avg_del is not pd.NaT:
-    #     class_avg_dob = class_avg_del + genesis
-    #     class_avg_age = (ts - class_avg_dob).days / DPY
-    # else:
-    #     class_avg_dob = (ts - pd.DateOffset(days=int(DPY*default_age)))
-    #     class_avg_age = default_age
-
-    age_df = pd.DataFrame(index=gr_df["id"], columns=["dob","delta","age"])
-    dobs = gr_df["date_of_birth"]
-    age_df["dob"] = list(dobs)
-    # age_df["delta"] = list((ts - age_df["dob"]).astype('timedelta64[D]'))
-    # age_df["age"] = list(age_df["delta"] / DPY)
-    # age_df.loc[(age_df["age"]>100), "age"] = class_avg_age
-    # age_df.loc[(age_df["age"]<0) , "age"] = class_avg_age
-    # age_df[numpy.isnan(age_df["age"])]["age"] = class_avg_age
-    #age_df["dob"].replace(pd.NaT, class_avg_dob, inplace=True)
-    # age_df["age"].replace(numpy.NaN, class_avg_age, inplace=True)
-    # age_df["age"].replace(nan, class_avg_age, inplace=True)
-    return age_df
 
 
 def profile_students(student_list, profile_df, up_to_ts, concepts_all, hwdf, user_cache, attempts_df):

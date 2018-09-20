@@ -1,6 +1,9 @@
+import numpy
 import sys
 # sys.path.append(".")
 # sys.path.append("..")
+from collections import Counter
+
 import pandas
 
 from hwgen.common import get_all_assignments, init_objects
@@ -11,7 +14,7 @@ from hwgen.hwgen_mentoring_utils import make_mentoring_model, train_deep_model, 
 
 base = "/home/rjm49/isaac_data_files/"
 n_users = -1
-cats, cat_lookup, all_qids, users, diffs, levels, cat_ixs, cat_page_lookup, lev_page_lookup, all_page_ids = init_objects(
+cats, cat_lookup, all_qids, levels, cat_ixs, cat_page_lookup, lev_page_lookup, all_page_ids = init_objects(
     n_users)
 
 print(len(all_page_ids))
@@ -26,31 +29,63 @@ target_group_ids = [7680, 7681, 7682]
 
 # assignments = assignments[assignments["group_id"].isin(target_group_ids)]
 
-LOAD_PREVIOUS_ASSIGNMENTS =False
-ass_fname = "filtered_assts.pkl"
-if LOAD_PREVIOUS_ASSIGNMENTS:
-    assignments = joblib.load(base+ass_fname)
+assignments = get_all_assignments()
+tx_list = list(numpy.unique(assignments["owner_user_id"]))
+tr_tx_list = []
+tt_tx_list = []
+teacher_ct = Counter()
+for t in tx_list:
+    t_assignments = assignments[assignments["owner_user_id"] == t]
+    teacher_ct[t] = t_assignments.shape[0]
+print(teacher_ct.most_common(20))
+print("teachers counted")
+tt_len = len(teacher_ct)//10
+print("target tt len is",tt_len)
+tx_ct = 0
+for tx,c in teacher_ct.most_common():
+    if tx_ct % 2 == 1 and len(tt_tx_list) < tt_len:
+        tt_tx_list.append(tx)
+    else:
+        if c > 5:
+            tr_tx_list.append(tx)
+    tx_ct+=1
+print("{} teachers for training, {} for test".format(len(tr_tx_list), len(tt_tx_list)))
+
+LOAD_DISC_ASSIGNMENTS =False
+tt_raw_fname = "tt_raw.csv"
+tr_raw_fname = "tr_raw.csv"
+# ass_fname = "filtered_assts.pkl"
+if LOAD_DISC_ASSIGNMENTS:
+    # assignments = joblib.load(base+ass_fname)
+    tt = joblib.load(base+tt_raw_fname)
+    tr = joblib.load(base+tr_raw_fname)
 else:
-    assignments = get_all_assignments()
-    assignments.loc[:,"creation_date"] = pandas.to_datetime(assignments.loc[:,"creation_date"])
-    joblib.dump(assignments, (base + ass_fname))
+    assignments["creation_date"] = pandas.to_datetime(assignments["creation_date"])
+    # joblib.dump(assignments, (base + ass_fname))
 
-tr = assignments[~assignments["group_id"].isin(target_group_ids)]
-# tr = tr.sample(n=10000, replace=False)
-tt = assignments[assignments["group_id"].isin(target_group_ids)]
+    # tr = assignments[~assignments["group_id"].isin(target_group_ids)]
+    # tr = tr.sample(n=10000, replace=False)
+    # tt = assignments[assignments["group_id"].isin(target_group_ids)]
 
-print("pre filter", assignments.shape)
-tr = filter_assignments(tr, mode="all", max_n=1000)
-print("tr filtered")
-# tr = tr[tr["include"] == True]
-print("post filter", tr.shape)
+    tt = assignments[assignments["owner_user_id"].isin(tt_tx_list)]
+    tr = assignments[assignments["owner_user_id"].isin(tr_tx_list)]
+    print("pre filter:")
+    print("tr {}".format(tr.shape))
+    print("tt {}".format(tt.shape))
+
+    tr = filter_assignments(tr, mode="book_only", max_n=None, top_teachers_first=True)
+    tt = filter_assignments(tt, mode="book_only", max_n=None, top_teachers_first=True)
+
+    joblib.dump(tt,base+tt_raw_fname)
+    joblib.dump(tr,base+tr_raw_fname)
+    print("post filter:")
+print("tr {}".format(tr.shape))
+print("tt {}".format(tt.shape))
 
 LOAD_PSI_CACHE = False
 if LOAD_PSI_CACHE:
     populate_student_cache(assignments)
     exit()
-
-print(tr.shape, tt.shape)
 
 BUILD_SXUA = False
 sxua_file = base + "SXUA.comp.pkl"

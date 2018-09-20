@@ -6,14 +6,15 @@ from keras.callbacks import EarlyStopping
 from keras.layers import Dense, concatenate, Dropout
 from keras.optimizers import Adam
 from matplotlib import pyplot
-from scipy import sparse
-from scipy.sparse import lil_matrix
 from sklearn.externals import joblib
 from sklearn.preprocessing import StandardScaler
 
 from hwgen.common import get_q_names
 from hwgen.deep.TrainTestBook import make_phybook_model, save_class_report_card
 from hwgen.deep.preproc import augment_data
+
+
+
 
 
 def train_deep_model(tr, sxua, qid_map, pid_map, sugg_map, n_macroepochs=100, n_epochs=10, use_linear=False, load_saved_tr=False, filter_by_length=True, model_generator=make_phybook_model):
@@ -25,8 +26,6 @@ def train_deep_model(tr, sxua, qid_map, pid_map, sugg_map, n_macroepochs=100, n_
         fs = None
         aid_list, s_list, c_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(tr, sxua, filter_by_length=filter_by_length, pid_map=pid_map, sugg_map=sugg_map)
         joblib.dump( (aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list),"tr.data")
-
-    exit()
 
     del aid_list
     del a_list
@@ -157,7 +156,6 @@ def create_student_scorecards(tt, sxua, model, sc, fs, qid_map, pid_map, sugg_ma
         print("y true lab is {}".format(y_true_lab))
         print("sum is:",sum(y_true))
 
-    print(x_list.shape)
     if fs is not None:
         x_list = x_list[:, fs]
         print(x_list.shape)
@@ -214,7 +212,7 @@ def create_student_scorecards(tt, sxua, model, sc, fs, qid_map, pid_map, sugg_ma
         # for ix in range(20):
         #     print(predictions[ix,:])
 
-        save_class_report_card(ts, aid, gr_id, s_raw_list, xl, ul, al, yl, m_list, predictions, psil, names_df, pid_map=po_filtered, sugg_map=po_filtered)
+        save_class_report_card(ts, aid, gr_id, s_raw_list, x_arr, ul, al, yl, m_list, predictions, psil, names_df, pid_map=po_filtered, sugg_map=po_filtered)
 
     with open("a_ids.txt", "w+") as f:
         f.write("({})\n".format(len(aid_list)))

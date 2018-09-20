@@ -9,13 +9,12 @@ from pandas._libs.tslib import Timestamp
 
 from hwgen.common import init_objects, get_user_data, get_all_assignments, get_student_list, make_gb_question_map
 
-cats, cat_lookup, all_qids, _, _, levels, cat_ixs, cat_page_lookup, lev_page_lookup, all_page_ids = init_objects(-1)
+# cats, cat_lookup, all_qids, _, _, levels, cat_ixs, cat_page_lookup, lev_page_lookup, all_page_ids = init_objects(-1)
 
-reverse_qid_dict = {}
-for ix,q in enumerate(all_qids):
-    reverse_qid_dict[q]=ix
+# reverse_qid_dict = {}
+# for ix,q in enumerate(all_qids):
+#     reverse_qid_dict[q]=ix
 
-from hwgen.profiler import get_attempts_from_db, get_age_df
 
 profile_cache="../../../isaac_data_files/gengen_cache/"
 base = "../../../isaac_data_files/"
@@ -26,36 +25,8 @@ dob_cache = base+"dob_cache.pkl"
 LOAD_FROM_PROF_CACHE = True
 SAVE_TO_PROF_CACHE = True
 
-def ass_extract(ass):
-    id = ass[1]["id"]
-    ts = ass[1]['creation_date']
-    gb_id = ass[1]["gameboard_id"]
-    gr_id = ass[1]["group_id"]
-    return id,ts,gb_id,gr_id
 
 
-def build_dob_cache(assts):
-    dob_cache = {}
-    for ix, ass in enumerate(assts.iterrows()):
-        id, ts, gb_id, gr_id = ass_extract(ass)
-        students = list(get_student_list(gr_id)["user_id"])
-        # print("#{}: PREP: grp {} at {}".format(ix, gr_id, ts))
-        group_df = get_user_data(students)
-        for psi in students:
-            dob = None
-            if psi not in dob_cache:
-                # print("age gen...")
-                age_df = get_age_df(ts, group_df)
-                # age_df["dob"] = pandas.to_datetime(age_df["dob"])
-                # age = age_df.loc[psi, "age"]
-                for psi_inner in students:
-                    dob = age_df.loc[psi_inner,"dob"]
-                    # print(type(dob))
-                    if isinstance(dob, Timestamp):
-                        dob_cache[psi_inner] = dob
-                    else:
-                        dob_cache[psi_inner] = None
-    return dob_cache
 
 
 def build_oa_cache(asst_df, gb_q_map):

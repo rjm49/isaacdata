@@ -29,7 +29,6 @@ from hwgen.common import init_objects, get_meta_data, get_all_assignments, get_s
     get_user_data, get_q_names
 from hwgen.concept_extract import page_to_concept_map
 from hwgen.deep.preproc import build_SXUA, augment_data
-from hwgen.hwgengen2 import hwgengen2, build_dob_cache
 from hwgen.profiler import get_attempts_from_db
 
 use_saved = True
@@ -40,7 +39,7 @@ create_scorecards = True
 base = "../../../isaac_data_files/"
 
 n_users = -1
-cats, cat_lookup, all_qids, users, diffs, levels, cat_ixs, cat_page_lookup, lev_page_lookup, all_page_ids = init_objects(
+cats, cat_lookup, all_qids, levels, cat_ixs, cat_page_lookup, lev_page_lookup, all_page_ids = init_objects(
     n_users)
 
 hwdf = get_meta_data()
