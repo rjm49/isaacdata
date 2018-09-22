@@ -31,10 +31,10 @@ from hwgen.concept_extract import page_to_concept_map
 from hwgen.deep.preproc import build_SXUA, augment_data
 from hwgen.profiler import get_attempts_from_db
 
-use_saved = True
-do_train = False
-do_testing = False
-create_scorecards = True
+use_saved = False
+do_train = True
+do_testing = True
+create_scorecards = False
 
 base = "../../../isaac_data_files/"
 
@@ -58,35 +58,35 @@ asst_fname = base + "assignments.pkl"
 con_page_lookup = page_to_concept_map()
 
 
-def cluster_and_print(assts):
-    xygen = hwgengen2(assts, batch_size=-1, FRESSSH=False)  # make generator object
-    for S, X, U, y, ai, awgt in xygen:
-        y_labs = numpy.array(y)
-        if (X == []):
-            continue
-        S = numpy.array(S)  # strings (labels)
-        X = numpy.array(X)  # floats (fade)
-        U = numpy.array(U)  # signed ints (-1,0,1)
-        print("S", S.shape)
-        print("X", X.shape)
-        print("U", U.shape)
-        assert y_labs.shape[1] == 1  # each line shd have just one hex assignment
-
-        n = 5000
-        lab_set = list(numpy.unique(y_labs))
-        colors = numpy.array([lab_set.index(l) for l in y_labs])[0:n]
-
-        # calc_entropies(X,y_labs)
-        # exit()
-
-        # pca = PCA(n_components=2)
-        tsne = TSNE(n_components=2)
-        # converted = pca.fit_transform(X) # convert experience matrix to points
-        converted = tsne.fit_transform(X[0:n])
-
-        plt.scatter(x=converted[:, 0], y=converted[:, 1], c=colors, cmap=pylab.cm.cool)
-        plt.show()
-        plt.savefig("learning_plot.png")
+# def cluster_and_print(assts):
+#     xygen = hwgengen2(assts, batch_size=-1, FRESSSH=False)  # make generator object
+#     for S, X, U, y, ai, awgt in xygen:
+#         y_labs = numpy.array(y)
+#         if (X == []):
+#             continue
+#         S = numpy.array(S)  # strings (labels)
+#         X = numpy.array(X)  # floats (fade)
+#         U = numpy.array(U)  # signed ints (-1,0,1)
+#         print("S", S.shape)
+#         print("X", X.shape)
+#         print("U", U.shape)
+#         assert y_labs.shape[1] == 1  # each line shd have just one hex assignment
+#
+#         n = 5000
+#         lab_set = list(numpy.unique(y_labs))
+#         colors = numpy.array([lab_set.index(l) for l in y_labs])[0:n]
+#
+#         # calc_entropies(X,y_labs)
+#         # exit()
+#
+#         # pca = PCA(n_components=2)
+#         tsne = TSNE(n_components=2)
+#         # converted = pca.fit_transform(X) # convert experience matrix to points
+#         converted = tsne.fit_transform(X[0:n])
+#
+#         plt.scatter(x=converted[:, 0], y=converted[:, 1], c=colors, cmap=pylab.cm.cool)
+#         plt.show()
+#         plt.savefig("learning_plot.png")
 
 
 def calc_entropies(X, y):
@@ -509,7 +509,9 @@ def save_class_report_card(ts, aid, gr_id, S, X, U, A, y_true_listform, m_list, 
             if pid in pid_map:
                 # if qid not in visited_qids:
                 # if qid in fatts[fatts["correct"]==True]["question_id"]:
-                cat = cat_page_lookup[pid]
+                cat="-"
+                if pid in cat_page_lookup:
+                    cat = cat_page_lookup[pid]
                 cats_visit_ct[cat] += 1
                 if qid in correct_qids:
                     cats_succ_ct[cat] += 1
@@ -533,7 +535,7 @@ def save_class_report_card(ts, aid, gr_id, S, X, U, A, y_true_listform, m_list, 
         assigned = []
         for ix,el in enumerate(a):
             if el > 0:
-                label = sugg_map[ix]
+                label = pid_map[ix]
                 page = label.split("|")[0]
                 if page not in assigned:
                     assigned.append(page)

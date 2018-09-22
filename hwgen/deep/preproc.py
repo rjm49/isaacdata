@@ -4,10 +4,9 @@ import pickle
 import zlib
 from collections import Counter
 from copy import copy
-from random import choice
+from random import choice, shuffle, Random
 
 import numpy
-
 import pandas
 from scipy import sparse
 from sklearn.externals import joblib
@@ -16,7 +15,7 @@ from hwgen.common import get_student_list, get_user_data, make_gb_question_map, 
 from hwgen.profiler import get_attempts_from_db
 
 
-def filter_assignments(assignments, mode, max_n=1000, top_teachers_first=True):
+def filter_assignments(assignments, mode, max_n=1000, top_teachers_first=True, shuffle_rows=False, min_no_of_assts=10, min_no_students=1, max_no_students=75):
     # assignments = assignments[["id","group_id","gameboard_id"]]
     # assignments.loc[:,"include"] = False
     assignments.index = assignments["id"]
@@ -30,7 +29,10 @@ def filter_assignments(assignments, mode, max_n=1000, top_teachers_first=True):
             teacher_ct[t] = t_assignments.shape[0]
         print(teacher_ct.most_common(20))
         print("teachers counted")
-        tx_list = [tx for tx,c in teacher_ct.most_common()]
+        if min_no_of_assts:
+            tx_list = [tx for tx,c in teacher_ct.most_common() if c>=min_no_of_assts] # Must have more than 10 assignments to be eligable
+        else:
+            tx_list = [tx for tx,c in teacher_ct.most_common()]
 
     map = make_gb_question_map()
     gr_ids = numpy.unique(assignments["group_id"])
@@ -43,7 +45,8 @@ def filter_assignments(assignments, mode, max_n=1000, top_teachers_first=True):
             continue
         gr_ids_keep[gr_id] = False
         students = get_student_list([gr_id])
-        if not students.empty:
+        # if not students.empty:
+        if len(students) >= min_no_students and len(students) <= max_no_students:
             for psi in list(students["user_id"]):
                 atts = get_attempts_from_db(psi)
                 if not atts.empty:
@@ -51,9 +54,14 @@ def filter_assignments(assignments, mode, max_n=1000, top_teachers_first=True):
                     break
     print("...done")
 
+
     incs = []
     for tx in tx_list:
-        for aid in assignments[assignments["owner_user_id"]==tx]["id"]:
+        aid_list = list(assignments[assignments["owner_user_id"] == tx]["id"])
+        if shuffle_rows:
+            Random(666).shuffle(aid_list)
+
+        for aid in aid_list:
             include=True
             if not gr_ids_keep[assignments.loc[aid,"group_id"]]:
                 include = False
@@ -129,13 +137,19 @@ def filter_assignments(assignments, mode, max_n=1000, top_teachers_first=True):
 
 
 def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
+    TARGET_MODE = "first"
     gb_qmap = make_gb_question_map()
     inverse_all_page_ids = {}
     for pix,pid in enumerate(pid_map):
         inverse_all_page_ids[pid] = pix
 
-    psi_atts_cache = {}
+    inverse_all_suggs = {}
+    for pix,pid in enumerate(sugg_map):
+        inverse_all_suggs[pid] = pix
 
+    onedp = lambda z: int(10.0 * z) / 10.0
+
+    psi_atts_cache = {}
     aid_list = []
     s_list = []
     x_list = []
@@ -151,31 +165,72 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
     ts_list = []
 
     tr.index = tr["id"]
+    tr["date_only"] = tr["creation_date"].dt.date
+
+    student_id_cache = {}
+
+    n_pids = len(pid_map)
+    n_suggs = len(sugg_map)
+
+    seen_ts_azz = []
+    student_first_asst_cache = {}
+
+    grids_to_skip = set()
+    if filter_by_length:
+        group_ids = set(tr["group_id"])
+        for gr_id in group_ids:
+            gr_ass = tr[tr["group_id"] == gr_id]
+            # student_ids = list(get_student_list(gr_id)["user_id"])
+            tss = sorted(list(set(gr_ass["creation_date"])))
+            if len(tss)<5:
+                pass
+            else:
+                grids_to_skip.add(gr_id)
 
     now_dt = datetime.datetime.now()
     fout = open("aug_{}.csv".format(now_dt),"w")
-    for aid in tr.loc[:,"id"]:
+    a_ids_source = tr.loc[:,"id"]
+    for aid in a_ids_source:
         azz = tr.loc[aid,:]
         gr_id = azz["group_id"]
+        if gr_id in grids_to_skip:
+            continue
         ts = azz["creation_date"]
-        student_ids = list(get_student_list(gr_id)["user_id"])
+        ts_date = azz["date_only"]
+        if (gr_id, ts_date) in seen_ts_azz:
+            print("already seen assignment for ts {} and grid {}".format(gr_id,ts_date))
+            continue
+        else:
+            seen_ts_azz.append((gr_id, ts_date))
+
+        if (gr_id in student_id_cache):
+            student_ids = student_id_cache[gr_id]
+        else:
+            student_ids = list(get_student_list(gr_id)["user_id"])
+            student_id_cache[gr_id] = student_ids
         print(student_ids)
         gb_id = azz["gameboard_id"]
-        hexes = set()
-        hexes.update(list(gb_qmap[gb_id]))
+        hexes = set(gb_qmap[gb_id])
+        hexes = sorted(hexes)
         print("hexes:", hexes)
 
         for psi in student_ids:
-            sxua_psi = sxua[psi]
+            sxua_psi : dict = sxua[psi]
+            if psi not in student_first_asst_cache:
+                s_ass_keyset= sorted(list(sxua_psi.keys()))
+                student_first_asst_cache[psi] = s_ass_keyset
+            s_ass_keyset = student_first_asst_cache[psi]
+            first_ass = s_ass_keyset[0]
+            n_assts = s_ass_keyset.index(ts)
             S, _, _, A = pickle.loads(zlib.decompress(sxua_psi[ts]))
             if S[0] < 16 or S[0] > 18:
                 continue
             hexes_tried = []
             hexes_to_try = []
 
-            Xa = numpy.zeros(shape=len(pid_map), dtype=numpy.bool)
-            Xc = numpy.zeros(shape=len(pid_map), dtype=numpy.uint16)
-            Xm = numpy.zeros(shape=len(pid_map), dtype=numpy.bool)
+            Xa = numpy.zeros(shape=n_pids, dtype=numpy.bool)
+            Xc = numpy.zeros(shape=n_pids, dtype=numpy.uint16)
+            Xm = numpy.zeros(shape=n_pids, dtype=numpy.bool)
             if psi in psi_atts_cache:
                 atts = pickle.loads(zlib.decompress(psi_atts_cache[psi]))
             else:
@@ -206,7 +261,7 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
             # passprob = nsucc/natts if natts>0 else 0
             # passprob_perday = passprob / dop if dop>0 else -1
 
-            crapness = dop * natts / (nsucc if nsucc > 0 else 0.1)
+            # crapness = dop * natts / (nsucc if nsucc > 0 else 0.1)
 
             del atts
             del fatts
@@ -217,18 +272,17 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
                 if hx not in hexes_tried:
                     hexes_to_try.append(hx)
 
-            y_true = numpy.zeros(len(sugg_map))  # numpy.zeros(len(all_page_ids))
+            y_true = numpy.zeros(n_suggs)  # numpy.zeros(len(all_page_ids))
             hexes_to_try = sorted(hexes_to_try)
             # for hx in sorted(hexes_to_try):
             # hx = sorted(hexes_to_try)[ (len(hexes_to_try)-1)//2 ]
 
-            hexes_to_try = [hx for hx in hexes_to_try if hx in sugg_map]
+            hexes_to_try = [hx for hx in hexes_to_try if (hx in sugg_map and hx not in hexes_tried)]
             if hexes_to_try == []:
                 print("no hexes to try")
                 continue
 
             # y_trues = None
-            TARGET_MODE = "decision_weighted"
             # if TARGET_MODE=="repeat":
             #     hx_ct = 0
             #     y_trues = []
@@ -239,23 +293,23 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
             #         hx_ct += 1
             if TARGET_MODE == "random":
                 hx = choice(hexes_to_try)
-                hxix = sugg_map.index(hx)
+                hxix = inverse_all_suggs[hx]
                 y_true[hxix] = 1.0
             elif TARGET_MODE == "decision_weighted":
                 for hx in hexes_to_try:
-                    hxix = sugg_map.index(hx)
+                    hxix = inverse_all_suggs[hx]
                     y_true[hxix] = 1.0 / len(hexes_to_try)
             elif TARGET_MODE == "no_weight":
                 for hx in hexes_to_try:
-                    hxix = sugg_map.index(hx)
+                    hxix = inverse_all_suggs[hx]
                     y_true[hxix] = 1.0
             elif TARGET_MODE == "first":
                 hx = sorted(hexes_to_try)[0]
-                hxix = sugg_map.index(hx)
+                hxix = inverse_all_suggs[hx]
                 y_true[hxix] = 1.0
             elif TARGET_MODE == "middle":
                 hx = sorted(hexes_to_try)[(len(hexes_to_try) - 1) // 2]
-                hxix = sugg_map.index(hx)
+                hxix = inverse_all_suggs[hx]
                 y_true[hxix] = 1.0
             else:
                 raise ValueError("'{}' is not a valid target mode!".format(TARGET_MODE))
@@ -267,11 +321,11 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
             s_raw_list.append(S)
 
             # age_1dp = int(10.0*S[0])/10.0
-            onedp = lambda z: int(10.0 * z) / 10.0
             # nsucc = int(10.0 *nsucc / age_1dp)/10.0
             # s_list.append([(int(10*S[0])/10.0), S[1], natts, ndist, nsucc])
             # s_list.append([natts, ndist, nsucc])
-            Sa = [onedp(S[0]), dop, natts, ndist, nsucc]
+            dsfa = (ts - first_ass).days
+            Sa = [onedp(S[0]), dop, natts, ndist, nsucc] #, dsfa, n_assts]
             # Sa = [0]
 
             # y_trues = [y_true] if (y_trues is None) else y_trues
@@ -312,6 +366,7 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
     # y_list = sparse.csr_matrix(y_list)
     psi_list = numpy.array(psi_list)
 
+    del student_first_asst_cache
     return aid_list, s_list, x_list, c_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list
 
 

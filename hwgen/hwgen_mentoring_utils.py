@@ -1,4 +1,7 @@
 import gc
+from collections import Counter
+from random import choice
+
 import numpy
 
 from keras import Input, Model
@@ -19,14 +22,14 @@ from hwgen.deep.preproc import augment_data
 
 def train_deep_model(tr, sxua, qid_map, pid_map, sugg_map, n_macroepochs=100, n_epochs=10, use_linear=False, load_saved_tr=False, filter_by_length=True, model_generator=make_phybook_model):
     model = None
-    fs = None
     if load_saved_tr:
-        aid_list, s_list, c_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = joblib.load("tr.data")
+        aid_list, s_list, x_list, c_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = joblib.load("tr.data")
     else:
         fs = None
-        aid_list, s_list, c_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(tr, sxua, filter_by_length=filter_by_length, pid_map=pid_map, sugg_map=sugg_map)
-        joblib.dump( (aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list),"tr.data")
+        aid_list, s_list, x_list, c_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(tr, sxua, filter_by_length=filter_by_length, pid_map=pid_map, sugg_map=sugg_map)
+        joblib.dump( (aid_list, s_list, x_list, c_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list),"tr.data")
 
+    # exit() # TODO remove for production
     del aid_list
     del a_list
     del ts_list
@@ -67,6 +70,8 @@ def train_deep_model(tr, sxua, qid_map, pid_map, sugg_map, n_macroepochs=100, n_
     max_mod = None
 
     x_mask = None
+    # x_mask = numpy.nonzero(numpy.any(x_list != 0, axis=0))[0]
+    # x_list = x_list[:, x_mask]
 
     if model is None:
         lrs = []
@@ -81,7 +86,7 @@ def train_deep_model(tr, sxua, qid_map, pid_map, sugg_map, n_macroepochs=100, n_
         # print(S.shape, X.shape, U.shape, A.shape, y_list.shape)
         S,X,U,C = s_list[0], x_list[0], u_list[0], c_list[0]
 
-        es = EarlyStopping(monitor='loss', patience=0, verbose=0, mode='auto')
+        es = EarlyStopping(monitor='val_loss', patience=0, verbose=0, mode='auto')
         # cves = EarlyStopping(monitor='acc', patience=1, verbose=0, mode='auto')
         # for BS in [50, 64, 100]:
         #     for LR in [0.003, 0.0025, 0.002]:
@@ -131,7 +136,8 @@ def train_deep_model(tr, sxua, qid_map, pid_map, sugg_map, n_macroepochs=100, n_
                     pyplot.plot(history.history['loss'])
                     pyplot.plot(history.history['val_acc'])
                     pyplot.plot(history.history['val_loss'])
-                    pyplot.legend(["cat acc","top k acc","loss","val cat acc","val loss"])
+                    pyplot.plot(history.history['val_top_k_categorical_accuracy'])
+                    pyplot.legend(["cat acc","top k acc","loss","val cat acc","val loss","val_top_k"])
                     pyplot.show()
                 except:
                     print("some problem occurred during plot .. ignoring")
@@ -146,7 +152,7 @@ def create_student_scorecards(tt, sxua, model, sc, fs, qid_map, pid_map, sugg_ma
     names_df = get_q_names()
     names_df.index = names_df["question_id"]
 
-    aid_list, s_list, c_list, x_list, u_list, a_list, y_true_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(tt, sxua, filter_by_length=False, pid_map=pid_map, sugg_map=sugg_map)
+    aid_list, s_list, x_list, c_list, u_list, a_list, y_true_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(tt, sxua, filter_by_length=False, pid_map=pid_map, sugg_map=sugg_map)
     joblib.dump( (aid_list, s_list, x_list, c_list, u_list, a_list, y_true_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list),"tt.data")
 
     for y_true in y_true_list:
@@ -156,12 +162,12 @@ def create_student_scorecards(tt, sxua, model, sc, fs, qid_map, pid_map, sugg_ma
         print("y true lab is {}".format(y_true_lab))
         print("sum is:",sum(y_true))
 
-    if fs is not None:
-        x_list = x_list[:, fs]
-        print(x_list.shape)
-        po_filtered = [pid_map[fsix] for fsix in fs]
-    else:
-        po_filtered = pid_map
+    # if fs is not None:
+    #     x_list = x_list[:, fs]
+    #     print(x_list.shape)
+        # po_filtered = [pid_map[fsix] for fsix in fs]
+    # else:
+    #     po_filtered = pid_map
 
     # for row in tt.iterrows():
     lookup = {}
@@ -201,7 +207,9 @@ def create_student_scorecards(tt, sxua, model, sc, fs, qid_map, pid_map, sugg_ma
                 continue
 
         s_arr = numpy.array(sl)
+        s_arr = sc.transform(s_arr)
         x_arr = numpy.array(xl)
+        print(x_arr.shape)
         # u_arr = numpy.array(ul)
         # c_arr = numpy.array(cl)
 
@@ -212,7 +220,7 @@ def create_student_scorecards(tt, sxua, model, sc, fs, qid_map, pid_map, sugg_ma
         # for ix in range(20):
         #     print(predictions[ix,:])
 
-        save_class_report_card(ts, aid, gr_id, s_raw_list, x_arr, ul, al, yl, m_list, predictions, psil, names_df, pid_map=po_filtered, sugg_map=po_filtered)
+        save_class_report_card(ts, aid, gr_id, s_raw_list, x_arr, ul, al, yl, m_list, predictions, psil, names_df, pid_map=pid_map, sugg_map=sugg_map)
 
     with open("a_ids.txt", "w+") as f:
         f.write("({})\n".format(len(aid_list)))
@@ -269,8 +277,82 @@ def make_mentoring_model(n_S, n_X, n_U, n_C, n_P, lr):
         ins = input_X
 
     m = Model(inputs=ins, outputs=[next_pg])
-    m.compile(optimizer=o, loss='categorical_crossentropy', metrics={'next_pg':['acc', 'top_k_categorical_accuracy']})
+    m.compile(optimizer=o, loss='mse', metrics={'next_pg':['acc', 'top_k_categorical_accuracy']})
     # plot_model(m, to_file='hwgen_model.png')
     m.summary()
     # input(",,,")
     return m
+
+def evaluate3(tt,sxua, model, sc,fs, load_saved_data=False, pid_map = None, sugg_map = None):
+    maxdops = 360
+    if load_saved_data:
+        aid_list, s_list, x_list, c_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = joblib.load(
+            "tt.data")
+    else:
+        aid_list, s_list, x_list, c_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(
+            tt, sxua, pid_map=pid_map, sugg_map=sugg_map)
+    print(s_list.shape)
+    try:
+        s_list = sc.transform(s_list)
+    except ValueError as ve:
+        print(ve)
+        print("Don't forget to check your flags... maybe you have do_train==False and have changed S ...")
+
+    x_list = x_list[:, fs]
+    ct = 0
+    if maxdops:
+        dops = [ sr[1] for sr in s_raw_list if sr[1] <= maxdops ]
+    else:
+        dops = [ sr[1] for sr in s_raw_list ]
+    dopdelta = max(dops)
+
+    delta_dict = {}
+    exact_ct = Counter()
+    strat_list = ["hwgen","step","lin","random"]
+
+    for sl,sr,xl,hxtt,hxtd in zip(s_list,s_raw_list,x_list,hexes_to_try_list, hexes_tried_list):
+        if sr[1] > maxdops:
+            continue
+        predictions = model.predict([sl.reshape(1,-1), xl.reshape(1,-1)])
+        y_hats = list(reversed(numpy.argsort(predictions)[0]))
+        for candix in y_hats:
+            if sugg_map[candix] not in hxtd:
+                hwgen_y_hat = candix
+                break
+
+        options = [p for p in sugg_map if p not in hxtd]
+        hts = [h for h in hxtd if (h in sugg_map)]
+
+        p_hat = sugg_map[hwgen_y_hat]
+        random_p_hat = choice(options)
+        random_y_hat = sugg_map.index(random_p_hat)
+        step_y_hat = 0 if not hts else min(len(sugg_map) - 1, sugg_map.index(hts[-1]) + 1)
+        #lin_y_hat = int((len(pid_override) - 2) * (sr[1] / dopdelta))
+        lin_y_hat = int((41) * (sr[1] / dopdelta))
+
+        # y_trues = []
+        # for p_true in sorted(hxtt):
+        # p_true = sorted(hxtt)[(len(hxtt)-1) //2]
+        #     y_trues.append(pid_override.index(p_true))
+        # y_true = median(y_trues)
+        p_true = sorted(hxtt)[0]
+        y_true = sugg_map.index(p_true)
+
+        for strat, y_hat in zip(strat_list, [hwgen_y_hat, step_y_hat, lin_y_hat, random_y_hat]):
+            if strat not in delta_dict:
+                delta_dict[strat] = []
+            delta_dict[strat].append(((y_hat-y_true)))
+            if(y_true == y_hat):
+                exact_ct[strat]+=1
+        ct += 1
+
+    for strat in strat_list:
+        delta_list = delta_dict[strat]
+        sq_list = [ d*d for d in delta_list ]
+        mu = numpy.mean(delta_list)
+        medi = numpy.median(delta_list)
+        stdev = numpy.std(delta_list)
+        print("{}: mean={} med={} std={}".format(strat, mu, medi, stdev))
+        print("Exact = {} of {} = {}".format(exact_ct[strat], ct, (exact_ct[strat]/ct)))
+        print("MSE = {}\n".format(numpy.mean(sq_list)))
+    input("tam")

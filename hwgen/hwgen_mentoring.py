@@ -9,8 +9,9 @@ import pandas
 from hwgen.common import get_all_assignments, init_objects
 from keras.models import load_model
 from sklearn.externals import joblib
+
 from hwgen.deep.preproc import build_SXUA, populate_student_cache, filter_assignments
-from hwgen.hwgen_mentoring_utils import make_mentoring_model, train_deep_model, create_student_scorecards
+from hwgen.hwgen_mentoring_utils import make_mentoring_model, train_deep_model, create_student_scorecards, evaluate3
 
 base = "/home/rjm49/isaac_data_files/"
 n_users = -1
@@ -28,6 +29,7 @@ target_group_ids = [7680, 7681, 7682]
 
 
 # assignments = assignments[assignments["group_id"].isin(target_group_ids)]
+pid_override = [pid for pid in all_page_ids if (pid.startswith("ch_") or pid.startswith("ch-i"))]
 
 assignments = get_all_assignments()
 tx_list = list(numpy.unique(assignments["owner_user_id"]))
@@ -73,8 +75,8 @@ else:
     print("tr {}".format(tr.shape))
     print("tt {}".format(tt.shape))
 
-    tr = filter_assignments(tr, mode="book_only", max_n=None, top_teachers_first=True)
-    tt = filter_assignments(tt, mode="book_only", max_n=None, top_teachers_first=True)
+    tr = filter_assignments(tr, mode="book_only", max_n=100, top_teachers_first=True, shuffle_rows=False)
+    tt = filter_assignments(tt, mode="book_only", max_n=10, top_teachers_first=True, shuffle_rows=False)
 
     joblib.dump(tt,base+tt_raw_fname)
     joblib.dump(tr,base+tr_raw_fname)
@@ -100,7 +102,7 @@ fs = None
 if do_train:
     print("training")
     model_genr = make_mentoring_model
-    model, _, sc = train_deep_model(tr, SXUA, all_qids, all_page_ids, all_page_ids, 10, 10, load_saved_tr=False, filter_by_length=True, model_generator=model_genr)
+    model, _, sc = train_deep_model(tr, SXUA, all_qids, all_page_ids, pid_override, 10, 10, load_saved_tr=False, filter_by_length=True, model_generator=model_genr)
     print("...deleted original X,y")
     model.save(base + 'hwg_model.hd5')
     # joblib.dump(fs, base + 'hwg_fs.pkl')
@@ -114,4 +116,6 @@ else:
 do_test = True
 if do_test:
     print("tt shape", tt.shape)
-    create_student_scorecards(tt, SXUA, model, sc, None, qid_map=all_qids, pid_map=all_page_ids, sugg_map=all_page_ids)
+    evaluate3(tt,SXUA, model, sc,None, load_saved_data=False, pid_map=all_page_ids, sugg_map=pid_override)
+    exit() #TODO remove for production
+    create_student_scorecards(tt, SXUA, model, sc, fs=None, qid_map=all_qids, pid_map=all_page_ids, sugg_map=pid_override)
