@@ -32,6 +32,8 @@ target_group_ids = [7680, 7681, 7682]
 pid_override = [pid for pid in all_page_ids if (pid.startswith("ch_") or pid.startswith("ch-i"))]
 
 assignments = get_all_assignments()
+assignments["creation_date"] = pandas.to_datetime(assignments["creation_date"])
+# assignments["creation_date"] = assignments["creation_date"].dt.date
 tx_list = list(numpy.unique(assignments["owner_user_id"]))
 tr_tx_list = []
 tt_tx_list = []
@@ -41,16 +43,16 @@ for t in tx_list:
     teacher_ct[t] = t_assignments.shape[0]
 print(teacher_ct.most_common(20))
 print("teachers counted")
-tt_len = len(teacher_ct)//10
+tt_len = 9
 print("target tt len is",tt_len)
 tx_ct = 0
 for tx,c in teacher_ct.most_common():
-    if tx_ct % 2 == 1 and len(tt_tx_list) < tt_len:
-        tt_tx_list.append(tx)
-    else:
-        if c > 5:
+    if c >= 10:
+        if tx_ct % 2 == 1 and len(tt_tx_list) < tt_len:
+            tt_tx_list.append(tx)
+        else:
             tr_tx_list.append(tx)
-    tx_ct+=1
+        tx_ct+=1
 print("{} teachers for training, {} for test".format(len(tr_tx_list), len(tt_tx_list)))
 
 LOAD_DISC_ASSIGNMENTS =False
@@ -62,7 +64,6 @@ if LOAD_DISC_ASSIGNMENTS:
     tt = joblib.load(base+tt_raw_fname)
     tr = joblib.load(base+tr_raw_fname)
 else:
-    assignments["creation_date"] = pandas.to_datetime(assignments["creation_date"])
     # joblib.dump(assignments, (base + ass_fname))
 
     # tr = assignments[~assignments["group_id"].isin(target_group_ids)]
@@ -75,8 +76,8 @@ else:
     print("tr {}".format(tr.shape))
     print("tt {}".format(tt.shape))
 
-    tr = filter_assignments(tr, mode="book_only", max_n=100, top_teachers_first=True, shuffle_rows=False)
-    tt = filter_assignments(tt, mode="book_only", max_n=10, top_teachers_first=True, shuffle_rows=False)
+    tr = filter_assignments(tr, mode="book_only", max_n=10000, top_teachers_first=True, shuffle_rows=True)
+    tt = filter_assignments(tt, mode="book_only", max_n=500, top_teachers_first=True, shuffle_rows=False)
 
     joblib.dump(tt,base+tt_raw_fname)
     joblib.dump(tr,base+tr_raw_fname)

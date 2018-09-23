@@ -36,7 +36,6 @@ def filter_assignments(assignments, mode, max_n=1000, top_teachers_first=True, s
 
     map = make_gb_question_map()
     gr_ids = numpy.unique(assignments["group_id"])
-    ct=0
 
     print("checking for empty groups")
     gr_ids_keep = {}
@@ -56,11 +55,15 @@ def filter_assignments(assignments, mode, max_n=1000, top_teachers_first=True, s
 
 
     incs = []
+    t_ct = 0
+    aid_list = []
     for tx in tx_list:
-        aid_list = list(assignments[assignments["owner_user_id"] == tx]["id"])
-        if shuffle_rows:
-            Random(666).shuffle(aid_list)
+        aid_list += list(assignments[assignments["owner_user_id"] == tx]["id"])
 
+    if shuffle_rows:
+        Random(666).shuffle(aid_list)
+
+    for _ in range(1):
         for aid in aid_list:
             include=True
             if not gr_ids_keep[assignments.loc[aid,"group_id"]]:
@@ -98,11 +101,16 @@ def filter_assignments(assignments, mode, max_n=1000, top_teachers_first=True, s
 
             if include:
                 incs.append(aid)
-                ct+=1
-                print(ct)
 
-            if max_n and ct >= max_n:
+            if max_n and len(incs)>=max_n:
+                print("broke inner")
                 break
+        if max_n and len(incs)>=max_n:
+            print("broke outer")
+            break
+        # t_ct+=1
+        # if max_n and t_ct >= max_n:
+        #     break
 
     # padding = [False] * (assignments.shape[0] - len(incs))
     # incs = incs + padding
@@ -136,7 +144,7 @@ def filter_assignments(assignments, mode, max_n=1000, top_teachers_first=True, s
 #         hexes.update(list(gb_qmap[gb_id]))
 
 
-def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
+def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None, filecode="nocode"):
     TARGET_MODE = "first"
     gb_qmap = make_gb_question_map()
     inverse_all_page_ids = {}
@@ -174,6 +182,7 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
 
     seen_ts_azz = []
     student_first_asst_cache = {}
+    group_track = {}
 
     grids_to_skip = set()
     if filter_by_length:
@@ -181,14 +190,12 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
         for gr_id in group_ids:
             gr_ass = tr[tr["group_id"] == gr_id]
             # student_ids = list(get_student_list(gr_id)["user_id"])
-            tss = sorted(list(set(gr_ass["creation_date"])))
+            tss = sorted(list(set(gr_ass["date_only"])))
             if len(tss)<5:
-                pass
-            else:
                 grids_to_skip.add(gr_id)
 
     now_dt = datetime.datetime.now()
-    fout = open("aug_{}.csv".format(now_dt),"w")
+    fout = open("augment_{}_{}.csv".format(filecode,now_dt),"w")
     a_ids_source = tr.loc[:,"id"]
     for aid in a_ids_source:
         azz = tr.loc[aid,:]
@@ -197,10 +204,18 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
             continue
         ts = azz["creation_date"]
         ts_date = azz["date_only"]
+
+        #merge together hexes for all assignments on this date...
+        #when we see this date again, it will be in seen_ts_azz, and we can skip it
         if (gr_id, ts_date) in seen_ts_azz:
             print("already seen assignment for ts {} and grid {}".format(gr_id,ts_date))
             continue
         else:
+            ts_rows = tr[tr["date_only"]==ts_date]
+            gb_ids = list(ts_rows["gameboard_id"])
+            hexes = set()
+            for gb_id in gb_ids:
+                hexes.update(gb_qmap[gb_id])
             seen_ts_azz.append((gr_id, ts_date))
 
         if (gr_id in student_id_cache):
@@ -209,17 +224,25 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
             student_ids = list(get_student_list(gr_id)["user_id"])
             student_id_cache[gr_id] = student_ids
         print(student_ids)
-        gb_id = azz["gameboard_id"]
-        hexes = set(gb_qmap[gb_id])
-        hexes = sorted(hexes)
+        # gb_id = azz["gameboard_id"]
+        # hexes = set(gb_qmap[gb_id])
+        # hexes = sorted(hexes)
         print("hexes:", hexes)
 
         for psi in student_ids:
+            if psi not in group_track:
+                group_track[psi] = gr_id
+            else:
+                if group_track[psi] != gr_id:
+                    print("n-th group found, skipping")
+                    continue
+
             sxua_psi : dict = sxua[psi]
             if psi not in student_first_asst_cache:
                 s_ass_keyset= sorted(list(sxua_psi.keys()))
                 student_first_asst_cache[psi] = s_ass_keyset
             s_ass_keyset = student_first_asst_cache[psi]
+
             first_ass = s_ass_keyset[0]
             n_assts = s_ass_keyset.index(ts)
             S, _, _, A = pickle.loads(zlib.decompress(sxua_psi[ts]))
@@ -307,6 +330,7 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
                 hx = sorted(hexes_to_try)[0]
                 hxix = inverse_all_suggs[hx]
                 y_true[hxix] = 1.0
+                target = (hx,1.0)
             elif TARGET_MODE == "middle":
                 hx = sorted(hexes_to_try)[(len(hexes_to_try) - 1) // 2]
                 hxix = inverse_all_suggs[hx]
@@ -344,7 +368,7 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
             hexes_tried_list.append(hexes_tried)
             gr_id_list.append(gr_id)
             ts_list.append(ts)
-            fout.write("{},{},{},{},{},{},{},\"{}\",\"{}\"\n".format(ts, gr_id, psi, ",".join(map(str, Sa)), sum(Xa), sum(Xm), sum(Xc), "\n".join(hexes_tried), "\n".join(hexes_to_try)))
+            fout.write("{},{},{},{},{},{},{},\"{}\",\"{}\",\"{}\"\n".format(ts, gr_id, psi, ",".join(map(str, Sa)), sum(Xa), sum(Xm), sum(Xc), "\n".join(hexes_tried), "\n".join(hexes_to_try), target))
 
             # ,\"{}\",\"{}\"\n".format(ts, gr_id, psi, ",".join(map(str, Sa)), Xa.sum(), numpy.sum(Xa > 0),
             #                                        "\n".join(hexes_tried), "\n".join(hexes_to_try)))
@@ -370,7 +394,7 @@ def augment_data(tr, sxua, filter_by_length=False, pid_map=None, sugg_map=None):
     return aid_list, s_list, x_list, c_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list
 
 
-def augment_data_old(tr, sxua, filter_by_length=True, pid_map=None, sugg_map=None):
+def augment_data_old(tr, sxua, filter_by_length=True, pid_map=None, sugg_map=None, filecode = None):
     bermuda_hexes = set()
     gb_qmap = make_gb_question_map()
 
