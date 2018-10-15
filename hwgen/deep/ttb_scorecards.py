@@ -10,12 +10,13 @@ from sklearn.externals import joblib
 from hwgen.HWGobbler2 import make_gb_question_map
 from hwgen.common import get_q_names
 # from hwgen.deep.TrainTestBook import pid_override, all_page_ids, cat_page_lookup
+from hwgen.deep.ttb_utils import augment_data
 from hwgen.profiler import get_attempts_from_db
 
 gb_qmap = make_gb_question_map()
 
 
-def save_class_report_card(ts, aid, gr_id, S, X, U, A, y, m_list, y_preds, slist, q_names_df, po_filtered, pid_override=None):
+def save_class_report_card(ts, aid, gr_id, S, X, U, A, y, m_list, y_preds, slist, q_names_df, po_filtered, all_page_ids=None, pid_override=None, cat_page_lookup=None):
 
     N = len(y_preds)
     print(N)
@@ -213,11 +214,11 @@ def save_class_report_card(ts, aid, gr_id, S, X, U, A, y, m_list, y_preds, slist
     months_av = mean(months_on_list)
     wb.save('./report_cards/{:.1f}_{}_{}.xlsx'.format(months_av, gr_id, aid))
 
-def create_student_scorecards(tt,sxua, model, sc,fs, load_saved_data=False, pid_override=None):
+def create_student_scorecards(tt,sxua, model, sc,fs, load_saved_data=False, all_page_ids=None, pid_override=None, cat_page_lookup=None):
     names_df = get_q_names()
     names_df.index = names_df["question_id"]
 
-    aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(tt, sxua)
+    aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(tt, sxua, all_page_ids=all_page_ids, pid_override=pid_override)
     joblib.dump( (aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list),"tt.data")
 
     print(x_list.shape)
@@ -266,7 +267,7 @@ def create_student_scorecards(tt,sxua, model, sc,fs, load_saved_data=False, pid_
         x_arr = numpy.array(xl)
 
         predictions = model.predict([s_arr,x_arr])
-        save_class_report_card(ts, aid, gr_id, s_raw_list, xl, ul, al, yl, m_list, predictions, psil, names_df, po_filtered, pid_override=pid_override)
+        save_class_report_card(ts, aid, gr_id, s_raw_list, xl, ul, al, yl, m_list, predictions, psil, names_df, po_filtered, all_page_ids=all_page_ids, pid_override=pid_override, cat_page_lookup=cat_page_lookup)
 
     with open("a_ids.txt", "w+") as f:
         f.write("({})\n".format(len(aid_list)))

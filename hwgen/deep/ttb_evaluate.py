@@ -1,14 +1,17 @@
+from math import sqrt
 from random import choice
 
 import numpy
 from collections import Counter
-from statistics import mean, median, stdev
+from statistics import mean, median, stdev, variance
 
 import pandas
 from sklearn.externals import joblib
 
 from hwgen.common import get_q_names, get_student_list, get_user_data, get_all_assignments, make_gb_question_map
 from matplotlib import pyplot as plt
+
+from hwgen.deep.ttb_utils import augment_data
 
 gb_qmap = make_gb_question_map()
 
@@ -62,20 +65,22 @@ def evaluate2(tt, sxua, model, sc,fs, load_saved_data=False):
     print("{} exact matches out of {} = {}".format(exacts, len(s_list), (exacts/len(s_list))))
     # exit()
 
-def evaluate3(tt,sxua, model, sc,fs, load_saved_data=False, pid_override=None):
+def evaluate3(tt,sxua, model, sc,fs, load_saved_data=False, all_page_ids=None, pid_override=None):
     maxdops = 700
     if load_saved_data:
         aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = joblib.load(
             "tt.data")
     else:
-        aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(
-            tt, sxua)
+        aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(tt, sxua,  all_page_ids=all_page_ids, pid_override=pid_override)
     print(s_list.shape)
     try:
         s_list = sc.transform(s_list)
     except ValueError as ve:
         print(ve)
         print("Don't forget to check your flags... maybe you have do_train==False and have changed S ...")
+
+    # arr=pandas.DataFrame(s_raw_list)
+    # arr.to_csv("s_raw.csv")
 
     x_list = x_list[:, fs]
     ct = 0
@@ -84,13 +89,15 @@ def evaluate3(tt,sxua, model, sc,fs, load_saved_data=False, pid_override=None):
     else:
         dops = [ sr[1] for sr in s_raw_list ]
     dopdelta = max(dops)
+    print(dopdelta)
 
+    y_trues = []
     delta_dict = {}
     exact_ct = Counter()
     strat_list = ["hwgen","step","lin","random"]
 
     for sl,sr,xl,hxtt,hxtd in zip(s_list,s_raw_list,x_list,hexes_to_try_list, hexes_tried_list):
-        if sr[1] > maxdops:
+        if maxdops and sr[1] > maxdops:
             continue
         predictions = model.predict([sl.reshape(1,-1), xl.reshape(1,-1)])
         y_hats = list(reversed(numpy.argsort(predictions)[0]))
@@ -107,7 +114,7 @@ def evaluate3(tt,sxua, model, sc,fs, load_saved_data=False, pid_override=None):
         random_y_hat = pid_override.index(random_p_hat)
         step_y_hat = 0 if not hts else min(len(pid_override) - 1, pid_override.index(hts[-1]) + 1)
         #lin_y_hat = int((len(pid_override) - 2) * (sr[1] / dopdelta))
-        lin_y_hat = int((41) * (sr[1] / dopdelta))
+        lin_y_hat = int((72) * (sr[1] / dopdelta))
 
         # y_trues = []
         # for p_true in sorted(hxtt):
@@ -116,6 +123,8 @@ def evaluate3(tt,sxua, model, sc,fs, load_saved_data=False, pid_override=None):
         # y_true = median(y_trues)
         p_true = sorted(hxtt)[0]
         y_true = pid_override.index(p_true)
+
+        y_trues.append(y_true)
 
         for strat, y_hat in zip(strat_list, [hwgen_y_hat, step_y_hat, lin_y_hat, random_y_hat]):
             if strat not in delta_dict:
@@ -126,20 +135,31 @@ def evaluate3(tt,sxua, model, sc,fs, load_saved_data=False, pid_override=None):
 
         ct += 1
 
+    mean_y_true = numpy.mean(y_trues)
+    var_y_true = numpy.var(y_trues)
+    print("mean y is {}".format(mean_y_true))
+    print("var(mean) is {}".format(var_y_true))
+
     for strat in strat_list:
         delta_list = delta_dict[strat]
         sq_list = [ d*d for d in delta_list ]
         mu = numpy.mean(delta_list)
+        abs_mu = mean([abs(d) for d in delta_list])
         medi = numpy.median(delta_list)
+        s2 = variance(delta_list)
         stdev = numpy.std(delta_list)
-        print("{}: mean={} med={} std={}".format(strat, mu, medi, stdev))
+        print("{}: mean={} med={} std={}, s2={}".format(strat, mu, medi, stdev, s2))
+        print("mae = {}".format(abs_mu))
         print("Exact = {} of {} = {}".format(exact_ct[strat], ct, (exact_ct[strat]/ct)))
-        print("MSE = {}\n".format(numpy.mean(sq_list)))
+        print("MSE = {}".format(numpy.mean(sq_list)))
+        print("RMSE = {}".format(sqrt(numpy.mean(sq_list))))
+        R2 = (var_y_true - s2) / var_y_true
+        print("R2 = {}\n".format(R2))
     input("tam")
 
-def evaluate_by_bucket(tt,sxua, model, sc,fs, load_saved_data=False, group_data = None, pid_override=None):
-    bucket_step = 30
-    bucket_width = 7
+def evaluate_by_bucket(tt,sxua, model, sc,fs, load_saved_data=False, group_data = None, all_page_ids=None, pid_override=None):
+    bucket_step = 1
+    bucket_width = 0
 
     # first_asst = {}
     all_assts = get_all_assignments()
@@ -151,21 +171,22 @@ def evaluate_by_bucket(tt,sxua, model, sc,fs, load_saved_data=False, group_data 
     #             first_asst[psi] = ts
 
 
-    buckets = [i for i in range(13)] #22 for bw 30
+    # buckets = [i for i in range(22)] #22 for bw 30
+    buckets = [i for i in range(700)]
     if load_saved_data:
         aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = joblib.load(
             "tt.data")
     else:
         aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(
-            tt, sxua)
-    # dops = [ s[1] for s in s_raw_list ]
+            tt, sxua, all_page_ids=all_page_ids, pid_override=pid_override)
 
-    first_asst = {}
-    for psi, aidts in zip(psi_list, ts_list):
-        if psi not in first_asst:
-            first_asst[psi] = aidts
+    dops = [ s[1] for s in s_raw_list ]
 
-    dops = [ (ts - first_asst[psi]).days for psi,ts in zip(psi_list, ts_list) ]
+    # first_asst = {}
+    # for psi, aidts in zip(psi_list, ts_list):
+    #     if psi not in first_asst:
+    #         first_asst[psi] = aidts
+    # dops = [ (ts - first_asst[psi]).days for psi,ts in zip(psi_list, ts_list) ]
 
     s_list = sc.transform(s_list)
     exacts = 0
@@ -177,6 +198,8 @@ def evaluate_by_bucket(tt,sxua, model, sc,fs, load_saved_data=False, group_data 
 
     # dopdelta = min(max(dops),7+30*max(buckets)) - max(min(dops),30*min(buckets)-7)
     dopdelta = min(max(dops),(max(bucket_step,1)*max(buckets)))
+    print(dopdelta)
+
     assert fs is not None
     x_list = x_list[:, fs]
 
@@ -316,7 +339,7 @@ def evaluate_by_bucket(tt,sxua, model, sc,fs, load_saved_data=False, group_data 
 
     # apc_df.index = apc_df["assignment"]
     # apc_df.drop("assignment", inplace=True)
-    apc_df.to_csv("apc38_train_df.csv")
+    apc_df.to_csv("apc38_df.csv")
     y_del_vals = []
     y_randels = []
     y_n1dels = []
@@ -482,16 +505,15 @@ def evaluate_phybook_loss(tt,sxua, model, sc, load_saved_data=False):
     print("num examples", N)
 
 
-def class_evaluation(_tt, sxua, model, sc, fs, load_saved_data=False, pid_override=None):
+def class_evaluation(_tt, sxua, model, sc, fs, load_saved_data=False, all_page_ids=None, pid_override=None):
     names_df = get_q_names()
     names_df.index = names_df["question_id"]
 
     if load_saved_data:
         aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = joblib.load("tt.data")
     else:
-        aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(_tt, sxua)
+        aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(_tt, sxua, all_page_ids=all_page_ids, pid_override=pid_override)
         joblib.dump( (aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list),"tt.data")
-
 
     # for row in tt.iterrows():
     lookup = {}
@@ -519,6 +541,8 @@ def class_evaluation(_tt, sxua, model, sc, fs, load_saved_data=False, pid_overri
     vote_exact_match = 0
     sum_deltas = []
     vote_deltas = []
+    sum_abs_deltas = []
+    vote_abs_deltas = []
     for aid in lkk:
         m_list = []
         s_list = []
@@ -557,13 +581,17 @@ def class_evaluation(_tt, sxua, model, sc, fs, load_saved_data=False, pid_overri
 
         p_true = sorted(hxtt)[0]
         y_true = pid_override.index(p_true)
-        sum_delta = abs(y_true - max_sum_ix)
-        vote_delta = abs(y_true - max_vote_ix)
+        sum_abs_delta = abs(y_true - max_sum_ix)
+        vote_abs_delta = abs(y_true - max_vote_ix)
+        sum_delta = (y_true - max_sum_ix)
+        vote_delta = (y_true - max_vote_ix)
         if max_sum_lab == p_true:
             sum_exact_match += 1
         if max_vote_lab == p_true:
             vote_exact_match += 1
         print(p_true, max_vote_lab, max_sum_lab)
+        sum_abs_deltas.append(sum_abs_delta)
+        vote_abs_deltas.append(vote_abs_delta)
         sum_deltas.append(sum_delta)
         vote_deltas.append(vote_delta)
 
@@ -571,7 +599,12 @@ def class_evaluation(_tt, sxua, model, sc, fs, load_saved_data=False, pid_overri
 
     print("sum mean delta: {}".format(mean(sum_deltas)))
     print("vote mean delta: {}".format(mean(vote_deltas)))
+    print("sum mean delta: {}".format(mean(sum_abs_deltas)))
+    print("vote mean delta: {}".format(mean(vote_abs_deltas)))
+    print("sum MSE: {}".format(mean([v**2 for v in sum_deltas])))
+    print("vote MSE: {}".format(mean([v**2 for v in vote_deltas])))
     n_aids = len(lkk)
     print("sum exacts {}/{} = {}".format(sum_exact_match, n_aids, sum_exact_match/n_aids))
     print("vote exacts {}/{} = {}".format(vote_exact_match, n_aids, vote_exact_match/n_aids))
+    input("wait>>>")
     return result_lkup

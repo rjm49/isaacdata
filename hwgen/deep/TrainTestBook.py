@@ -16,7 +16,7 @@ from hwgen.deep.ttb_utils import filter_assignments, build_SXUA, train_deep_mode
 use_saved = True
 do_train = False
 do_testing = True
-create_scorecards = True
+create_scorecards = False
 
 base = "../../../isaac_data_files/"
 
@@ -235,16 +235,19 @@ if __name__ == "__main__":
         fs = joblib.load(base + 'hwg_fs.pkl')
         sc = joblib.load(base + 'hwg_mlb.pkl')
 
+    tt.to_csv("tt_ttb.csv")
+    # exit()
+
     numpy.set_printoptions(precision=4)
     if do_testing:
         print("testing")
-        evaluate3(tt, SXUA, model, sc,fs, load_saved_data=use_saved, pid_override=pid_override)
+        evaluate3(tt, SXUA, model, sc,fs, load_saved_data=use_saved, all_page_ids=all_page_ids, pid_override=pid_override)
         # input("now class")
-        class_ev_lookup = class_evaluation(tt, SXUA, model, sc, fs, load_saved_data=use_saved, pid_override=pid_override)
+        class_ev_lookup = class_evaluation(tt, SXUA, model, sc, fs, load_saved_data=use_saved, all_page_ids=all_page_ids, pid_override=pid_override)
         # evaluate_phybook_loss(tt, SXUA, model, sc, load_saved_data=use_saved)  # , sscaler,levscaler,volscaler)
         # input("DEEP testing done")
         print("m testing")
-        evaluate_by_bucket(tt, SXUA, model, sc,fs, load_saved_data=use_saved, group_data=class_ev_lookup, pid_override=pid_override)
+        evaluate_by_bucket(tt, SXUA, model, sc,fs, load_saved_data=use_saved, group_data=class_ev_lookup, all_page_ids=all_page_ids, pid_override=pid_override)
 
     if create_scorecards:
-        create_student_scorecards(tt, SXUA, model, sc,fs, load_saved_data=use_saved, pid_override=pid_override)
+        create_student_scorecards(tt, SXUA, model, sc,fs, load_saved_data=use_saved, all_page_ids=all_page_ids, pid_override=pid_override, cat_page_lookup=cat_page_lookup)

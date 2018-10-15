@@ -118,8 +118,6 @@ def feature_check(s_list, x_list, y_list):
 
     return fs_mx
 
-
-
 def make_phybook_model(n_S, n_X, n_U, n_A, n_P, lr):
     # this is our input placeholder
     if n_S is not None:
@@ -426,7 +424,7 @@ def train_deep_model(tr, sxua, n_macroepochs=100, n_epochs=10, use_linear=False,
         S,X,U,A = s_list[0], x_list[0], u_list[0], a_list[0]
         print(S.shape, X.shape, U.shape, A.shape, y_list.shape)
 
-        es = EarlyStopping(monitor='val_loss', patience=0, verbose=0, mode='auto')
+        es = EarlyStopping(monitor='loss', patience=0, verbose=0, mode='auto')
         # cves = EarlyStopping(monitor='acc', patience=1, verbose=0, mode='auto')
         # for BS in [50, 64, 100]:
         #     for LR in [0.003, 0.0025, 0.002]:
