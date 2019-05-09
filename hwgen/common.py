@@ -27,7 +27,7 @@ def test_db_connexion():
         return False
     return True
 # DATABASE = test_db_connexion()
-DATABASE=True
+DATABASE=False
 LOAD_FROM_CACHE = True
 SAVE_TO_CACHE = True
 
@@ -163,6 +163,15 @@ def get_all_assignments():
     query = "select id, gameboard_id, group_id, owner_user_id, creation_date from assignments order by creation_date asc"
     name = "gb_assignments2.csv"
     return make_db_call(query,name)
+
+def get_all_attempts():
+    query = "select user_id, event_details->>'questionId' AS question_id, event_details->>'correct' AS correct, timestamp from logged_events where event_type='ANSWER_QUESTION'"
+    name = "all_attempts.csv"
+    raw_df =  make_db_call(query, name)
+    # TODO Maybe do stuff to raw_df ??? Profit!
+    raw_df["timestamp"] = pandas.to_datetime(raw_df["timestamp"])
+    return raw_df
+
 
 def make_gb_question_map():
     query = "select id, questions from gameboards"

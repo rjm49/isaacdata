@@ -1,6 +1,10 @@
+import copy
 import gc
+import math
 import pickle
 import zlib
+from collections import defaultdict
+
 import numpy
 
 import pandas
@@ -12,111 +16,71 @@ from keras.utils import plot_model
 from sklearn.externals import joblib
 from sklearn.preprocessing import StandardScaler
 
-from hwgen.common import get_student_list, get_user_data, make_gb_question_map
+from hwgen.common import get_student_list, get_user_data, make_gb_question_map, get_all_attempts
 from hwgen.hwgengen2 import build_dob_cache
 from hwgen.profiler import get_attempts_from_db
 from matplotlib import pyplot
 
 gb_qmap = make_gb_question_map()
 
-
-def filter_assignments(assignments, book_only):
-    # query = "select id, gameboard_id, group_id, owner_user_id, creation_date from assignments order by creation_date asc"
-    assignments["include"] = True
+def create_assignment_summary(assignments : pandas.DataFrame):
     print(assignments.shape)
-    map = make_gb_question_map()
-    meta = get_meta_data()
-    for ix in range(assignments.shape[0]):
-        include = True
-        gr_id = assignments.loc[ix, "group_id"]
+    print(assignments[0:56])
+    print(len(assignments))
 
-        if book_only:
-            gb_id = assignments.loc[ix, "gameboard_id"]
-            hexes = map[gb_id]
-            for hx in hexes:
-                hx = hx.split("|")[0]
-                if not (hx.startswith("ch_") or hx.startswith("ch-i")):
-                    include = False
-                    break
+    qmap = make_gb_question_map()
 
-        if include:
-            students = get_student_list([gr_id])
-            if students.empty:
-                include = False
+    assignments.loc[:, "creation_date"] = pandas.to_datetime(assignments["creation_date"]).dt.floor("D")
 
-        if include:
-            include = False
-            for psi in list(students["user_id"]):
-                # print("checking",psi)
-                atts = get_attempts_from_db(psi)
-                if not atts.empty:
-                    # print("OK")
-                    include = True
-                    break
+    print("ix loop to ", max(assignments.index))
+    cache = {}
+    for ix in assignments.index:
+        if ix % 100 ==0:
+            print(ix)
 
-        if not include:
-            assignments.loc[ix, "include"] = False
 
-    # assignments = assignments[assignments["include"]==True]
-    print(assignments.shape)
-    return assignments
+        aid, ts, gr_id, gb_id, t = assignments.loc[ix, ["id","creation_date","group_id","gameboard_id","owner_user_id"]]
+        hxs_from_map = copy.copy(qmap[gb_id])
+        print(gb_id,"->",len(hxs_from_map))
+        student_df = get_student_list([gr_id])
+        students = list(student_df["user_id"])
 
-def feature_check(s_list, x_list, y_list):
-    currMax =0
-    sN=y_list.shape[0]
-    x_list = x_list[numpy.random.choice(x_list.shape[0], sN, replace=False)]
-    print(s_list.shape)
-    print(x_list.shape)
-    print(y_list.shape)
-    nouveau_y = []
-    for yel in y_list:
-        ix = numpy.where(yel==1)[0]
-        nouveau_y.append(ix)
-    y_labs = numpy.array(nouveau_y).ravel()
+        if (ts,gr_id,t) not in cache:
+            cache[(ts,gr_id,t)] = (aid, students, hxs_from_map)
+        else:
+            print("adding to xisitn cache entry")
+            aid, xstudents, xhexes = cache[(ts,gr_id,t)]
+            for s in students:
+                if s not in xstudents:
+                    xstudents.append(s)
+            for h in hxs_from_map:
+                if h not in xhexes:
+                    xhexes.append(h)
+            print(ts,gr_id,t)
+            # print("hexes is now",len(xhexes),"long")#: {}".format(len(xhexes),xhexes))
+            cache[(ts,gr_id,t)] = (aid,xstudents, xhexes)
 
-    #X = numpy.concatenate((s_list, x_list), axis=1)[0:1000,:]
-    #print(X.shape)
-    kcounts = range(1, x_list.shape[1], 5)
-    results = []
-    x_list = x_list[0:sN, :]
-    y_labs = y_labs[0:sN]
-    # s_list = s_list[0:sN, :]
-    y_list = y_list[0:sN, :]
+    df = pandas.DataFrame(index=range(len(cache)))
+    print("building df... #entries:", len(cache))
+    for ix,k in enumerate(cache):
+        if ix % 100 == 0:
+            print(ix)
+        ts,gr_id,t = k
+        aid, students, hxs = cache[k]
+        df.loc[ix, "creation_date"] = ts
+        df.loc[ix, "group_id"] = int(gr_id)
+        df.loc[ix, "owner_user_id"] = int(t)
+        df.loc[ix, "id"] = int(aid)
+        df.loc[ix, "students"] = str(students)
+        df.loc[ix, "hexes"] = str(hxs)
+        df.loc[ix, "num_hexes"] = len(hxs)
+        hex_in_book = [(h.startswith("ch_") or h.startswith("ch-i")) for h in hxs]
+        df.loc[ix, "has_book_hexes"] = (True in hex_in_book)
+        df.loc[ix,"include"] = (len(students)>0) and (len(students) <= 20)
+    print(df.shape)
+    return df
 
-    last_f_ct = 0
-    es = EarlyStopping(monitor='acc', patience=1, verbose=0, mode='auto')
-    for i in kcounts:
-        print("building fs")
-        fs = feature_selection.SelectKBest(feature_selection.f_classif, k=i)
-        X_train_fs = fs.fit_transform(x_list, y_labs)
-        print(X_train_fs.shape)
-        f_ixs = fs.get_support(indices=True)
-        print(i, "\n", f_ixs)
-        if len(f_ixs) <= last_f_ct:
-            break
-        last_f_ct = len(f_ixs)
-        #clf = SVC()
-        bfn = lambda : make_phybook_model(None, X_train_fs.shape[1], 0,0, y_list.shape[1])
-        model = KerasClassifier(build_fn=bfn, epochs=100, batch_size=32, verbose=1, shuffle=True)
-        scores = cross_validation.cross_val_score(model, X_train_fs, y_list, cv=5, fit_params={'callbacks':[es]})
-        # scores = cross_validation.cross_val_score(clf, numpy.concatenate([s_list, X_train_fs], axis=1), y_labs[0:sN], cv=5)
 
-        # print i,scores.mean()
-        results = numpy.append(results, scores.mean())
-        if results.max() > currMax:
-            fs_mx = fs
-            currMax = results.max()
-    # print (percentiles[optimal_percentil[0]])
-    print("Optimal number of features:", len(fs_mx.get_support()), "\n")
-    import pylab as pl
-    pl.figure()
-    pl.xlabel("Number of features selected")
-    pl.ylabel("Cross validation accuracy)")
-    pl.plot(kcounts,results)
-    pl.show()
-    print ("Mean scores:",results)
-
-    return fs_mx
 
 def make_phybook_model(n_S, n_X, n_U, n_A, n_P, lr):
     # this is our input placeholder
@@ -128,21 +92,33 @@ def make_phybook_model(n_S, n_X, n_U, n_A, n_P, lr):
     #w100: 17% to beat
     do=.2
 
-    input_U = Input(shape=(n_X,), name="u_input")
+    input_X = Input(shape=(n_X,), name="x_input")
+    input_U = Input(shape=(n_U,), name="u_input")
+    input_A = Input(shape=(n_A,), name="a_input")
+
+    inner_X = Dense(300, activation="relu")(input_X)
     inner_U = Dense(300, activation="relu")(input_U)
+    inner_A = Dense(300, activation="relu")(input_A)
 
-    if n_S is not None:
-        # hidden = concatenate([inner_U, inner_S])
-        hidden = concatenate([inner_U, inner_S])
-    else:
-        hidden = inner_U
+#     inner_X = Dense(100, activation="relu")(inner_X)
+#     inner_U = Dense(100, activation="relu")(inner_U)
+#     inner_A = Dense(100, activation="relu")(inner_A)
 
-    # hidden = Dense(w, activation='relu')(hidden)
-    # hidden = Dropout(.2)(hidden)
-    hidden = Dense(w, activation='relu')(hidden)
+    
+    hidden = concatenate([inner_S, inner_X, inner_U , inner_A ])
+
+#     hidden = Dense(w, activation='relu')(hidden)
+#     hidden = Dropout(.2)(hidden)
+#     hidden = Dense(w, activation='relu')(hidden) #2 layer no DO: 221
+#     hidden = Dropout(.2)(hidden)
+    ########
+    hidden = Dense(512, activation='relu')(hidden)
     hidden = Dropout(.2)(hidden)
-    hidden = Dense(w, activation='relu')(hidden)
+    hidden = Dense(256, activation='relu')(hidden) #2 layer no DO: 221
     hidden = Dropout(.2)(hidden)
+#     hidden = Dense(128, activation='relu')(hidden) #2 layer .2 DO: 207
+#     hidden = Dropout(.2)(hidden)
+
     next_pg = Dense(n_P, activation='softmax', name="next_pg")(hidden)
 
     o = Adam(lr= lr)
@@ -150,25 +126,40 @@ def make_phybook_model(n_S, n_X, n_U, n_A, n_P, lr):
     # m = Model(inputs=[input_S, input_U], outputs=[next_pg, output_U])
     # m.compile(optimizer=o, loss=["binary_crossentropy","binary_crossentropy"], metrics={'next_pg':["binary_accuracy", "top_k_categorical_accuracy"], 'outAuto':['binary_accuracy']})
     if n_S is not None:
-        ins = [input_S, input_U]
+        ins = [input_S, input_X, input_U, input_A]
     else:
         ins = input_U
 
     m = Model(inputs=ins, outputs=[next_pg])
     m.compile(optimizer=o, loss='categorical_crossentropy', metrics={'next_pg':['acc', 'top_k_categorical_accuracy']})
-    plot_model(m, to_file='hwgen_model.png')
+    # plot_model(m, to_file='hwgen_model.png')
     m.summary()
     # input(",,,")
     return m
 
 
-def augment_data(tr, sxua, filter_length=True, all_page_ids=None, pid_override=None):
+def cnt_ass(df):
+    cnt = 0
+    for ix in df.index:
+        cnt+= len(eval(df.loc[ix,"students"]))
+    return cnt
+
+def augment_data(ass_summ, sxua, pid_override, all_qids=None, all_page_ids=None, filter=False):
+    # print("ass_summ len = ",len(ass_summ))
+    print("augmenting")
+    psi_ass_cnt = 0
+    out_age = 0
+    out_dop = 0
+    not_in_sxua = 0
+    psi_collaps_ts = 0
+
+    max_dop = 0
     inverse_all_page_ids = {}
-    for pix,pid in enumerate(all_page_ids):
+    for pix,pid in enumerate(pid_override):
         inverse_all_page_ids[pid] = pix
 
     psi_atts_cache = {}
-    group_ids = pandas.unique(tr["group_id"])
+    group_ids = pandas.unique(ass_summ["group_id"])
 
     aid_list = []
     s_list = []
@@ -184,164 +175,181 @@ def augment_data(tr, sxua, filter_length=True, all_page_ids=None, pid_override=N
     ts_list = []
 
     fout = open("tr_summ.csv","w")
+    ass_summ.loc[:, "creation_date"] = pandas.to_datetime(ass_summ["creation_date"]).dt.floor("D")
+    
+    j=0
+    for aix in ass_summ.index:
+        if j % len(ass_summ)==0:
+            print(j)
+        j+=1
+        them_hexes = sorted([h.replace("-","_") for h in eval(ass_summ.loc[aix, "hexes"]) if h in pid_override])
+        student_ids = eval(ass_summ.loc[aix, "students"])
+        gr_id = ass_summ.loc[aix, "group_id"]
+        aid = ass_summ.loc[aix, "id"]
+        ts = ass_summ.loc[aix,"creation_date"]
 
-    # orig_tss_map = {}
-    # orig_tss = list(tr["creation_date"])
-    # d_tss = list(tr["creation_date"].dt.floor("D"))
-    # assert len(d_tss) == len(orig_tss)
+        if them_hexes == []:
+            continue
+        # else:
+        #     hx = them_hexes
+        #
+        # hix = pid_override.index(hx)
+        dop_limit = 365
+        for psi in student_ids:
+            try:
+                S, X, U, A = pickle.loads(zlib.decompress(sxua[psi][ts]))
+            except:
+                print(psi,ts,"not in sxua, skip")
+                continue
 
-    # tr["creation_date"] = tr["creation_date"].dt.floor("D")
+            # print("remapping from q to p")
+            if all_page_ids:
+                #get the weights (in qns) of all the pages here...
+#                 page_wgts = defaultdict(int)
+#                 for q in all_qids:
+#                     pid = q.split("|")[0]
+#                     page_wgts[pid] += 1
+                
+                plabs = [all_qids[i].split("|")[0] for i in numpy.nonzero(X)[0]]
+                pixes = [all_page_ids.index(lab) for lab in plabs]
+                X = numpy.zeros(len(all_page_ids))
+                # for pix in pixes:
+                X[pixes]=1.0
+                
+#                 U = numpy.zeros(len(all_page_ids))
+#                 for plab,pix in zip(plabs,pixes):
+#                     U[pix] += 1.0/page_wgts[plab]
+#                 print("sum mapped X:",sum(X))
+            # print("remapping from q to p DOME")
 
-    # for ts,ots in zip(d_tss, orig_tss):
-    #     if ts not in orig_tss_map:
-    #         orig_tss_map[ts] = ots # has the effect of storing the EARLIEST ots
+#             U = numpy.zeros(1)
+#             A = numpy.zeros(1)
+    
+            dsreg = max(0,S[1])
+            dsass = max(0,S[2])
+            # dop = min(dsass,dsreg)
+            dop = min(dsass,dsreg)
 
-    s_filter = set()
-    for gr_id in group_ids:
-        gr_ass = tr[tr["group_id"] == gr_id]
-        student_ids = list(get_student_list(gr_id)["user_id"])
-        tss = sorted(list(set(gr_ass["creation_date"])))
-        if filter_length and len(tss)<5:
-            pass
-        else:
-            s_filter.update(student_ids)
-
-    group_track = {}
-    for gr_id in group_ids:
-        gr_ass = tr[tr["group_id"] == gr_id]
-        student_ids = list(get_student_list(gr_id)["user_id"])
-        tss = sorted(list(set(gr_ass["creation_date"])))
-        for ts in tss:
-            ts_rows = gr_ass[gr_ass["creation_date"]==ts]
-            aids = list(ts_rows["id"])
-            aid = aids[0]
-            gb_ids = list(ts_rows["gameboard_id"])
-            hexes = set()
-            for gb_id in gb_ids:
-                hexes.update(list(gb_qmap[gb_id]))
-
-            for psi in student_ids:
-                if psi not in s_filter:
+#             print("filter dops =",filter)
+            if filter:
+#                 print("cf {} vs {}".format(dop, dop_limit))
+                if dop > dop_limit:
+#                     print("dropping")
+                    out_dop += 1
                     continue
 
-                if psi in group_track and group_track[psi]!=gr_id:
-                    print("skipping n-th group")
-                    continue
-                else:
-                    group_track[psi]=gr_id
+            if (S[0]<16 or S[0]>18): #i.e. if student has no valid age TODO filter for EDM'19
+                # print(psi,S[0],"not in age range, skipping")
+                out_age += 1
+                continue
 
-                sxua_psi = sxua[psi]
-                print(aid, psi, ts)
-                S,_,U,A = pickle.loads(zlib.decompress(sxua_psi[ts]))
-                if S[0]<16 or S[0]>18: #i.e. if student has no valid age TODO filter for AAAI19
-                    continue
-                # if S[1]==0: #no time in platform
-                #     continue
+            if dop > max_dop:
+                max_dop = dop
 
-                hexes_tried = []
-                hexes_to_try = []
-                # if len(hexes)==1:
-                #     hexes_to_try = hexes
-                # else:
+            # if S[1]==0: #no time in platform
+            #     continue
 
-                Xa = numpy.zeros(shape=len(all_page_ids))
-                if psi in psi_atts_cache:
-                    atts = psi_atts_cache[psi]
-                else:
-                    atts = get_attempts_from_db(psi)
-                    psi_atts_cache[psi]=atts
+            hexes_tried = []
+            hexes_to_try = them_hexes
 
-                fatts = atts[atts["timestamp"] < ts]
-                for qid in fatts["question_id"]:
-                    pid = qid.split("|")[0]
-                    if pid not in hexes_tried:
-                        if pid in inverse_all_page_ids:
-                            hexes_tried.append(pid)
-                            Xa[inverse_all_page_ids[pid]]=1
+            if psi in psi_atts_cache:
+                atts = psi_atts_cache[psi]
+            else:
+                atts = get_attempts_from_db(psi)
+            psi_atts_cache[psi]=atts
 
-                natts = fatts.shape[0]
-                nsucc = len(set(fatts[fatts["correct"] == True]["question_id"]))
-                ndist = len(set(fatts["question_id"]))
-                dop = S[1]
-                # passrate = nsucc/dop if dop>0 else -1
-                # passprob = nsucc/natts if natts>0 else 0
-                # passprob_perday = passprob / dop if dop>0 else -1
+            fatts = atts[atts["timestamp"] < ts]
+            for qid in fatts["question_id"]:
+                pid = qid.split("|")[0]
+                if pid not in hexes_tried:
+                    if pid in pid_override:
+                        hexes_tried.append(pid)
 
-                crapness = dop * natts / (nsucc if nsucc > 0 else 0.1)
+            natts = fatts.shape[0]
+            nsucc = len(set(fatts[fatts["correct"] == True]["question_id"]))
+            ndist = len(set(fatts["question_id"]))
+            # passrate = nsucc/dop if dop>0 else -1
+            # passprob = nsucc/natts if natts>0 else 0
+            # passprob_perday = passprob / dop if dop>0 else -1
 
-                del fatts
+            crapness = dop * natts / (nsucc if nsucc > 0 else 0.01)
 
-                for hx in hexes:
-                    if hx not in hexes_tried:
-                        hexes_to_try.append(hx)
+            del fatts
 
-                if hexes_to_try==[]:
-                    print("no hexes to try")
-                    continue
+            # for hx in hexes:
+            #     if hx not in hexes_tried:
+            #         hexes_to_try.append(hx)
 
-                y_true = numpy.zeros(len(pid_override))  # numpy.zeros(len(all_page_ids))
-                hexes_to_try = sorted(hexes_to_try)
-                #for hx in sorted(hexes_to_try):
-                # hx = sorted(hexes_to_try)[ (len(hexes_to_try)-1)//2 ]
+            # if hexes_to_try==[]:
+            #     print("no hexes to try")
+            #     continue
+            # hexes_to_try = hexes
 
-                TARGET_MODE = "first"
-                if TARGET_MODE=="decision_weighted":
-                    for hx in hexes_to_try:
-                        hxix = pid_override.index(hx)
-                        y_true[hxix] = 1.0 / len(hexes_to_try)
-                elif TARGET_MODE=="no_weight":
-                    for hx in hexes_to_try:
-                        hxix = pid_override.index(hx)
-                        y_true[hxix] = 1.0
-                elif TARGET_MODE=="first":
-                        hx = sorted(hexes_to_try)[0]
-                        hxix = pid_override.index(hx)
-                        y_true[hxix] = 1.0
-                elif TARGET_MODE=="middle":
-                        hx = sorted(hexes_to_try)[(len(hexes_to_try) - 1) // 2]
-                        hxix = pid_override.index(hx)
-                        y_true[hxix] = 1.0
-                else:
-                    raise ValueError("'{}' is not a valid target mode!".format(TARGET_MODE))
+            y_true = numpy.zeros(len(pid_override))  # numpy.zeros(len(all_page_ids))
+            # hexes_to_try = sorted(hexes_to_try)
+            #for hx in sorted(hexes_to_try):
+            # hx = sorted(hexes_to_try)[ (len(hexes_to_try)-1)//2 ]
 
-                X=Xa
+            # y_true[hix] = 1.0
 
-                print("hexes t try: {}".format(hexes_to_try))
-                print("hexes      : {}".format(hexes))
+            TARGET_MODE = "no_weight"
+            if TARGET_MODE=="decision_weighted": #230
+                for hx in hexes_to_try:
+                    hxix = pid_override.index(hx)
+                    y_true[hxix] = 1.0 / len(hexes_to_try)
+            elif TARGET_MODE=="no_weight": #224
+                for hx in hexes_to_try:
+                    hxix = pid_override.index(hx)
+                    y_true[hxix] = 1.0
+            elif TARGET_MODE=="first": #221
+                hx = sorted(hexes_to_try)[0]
+                hxix = pid_override.index(hx)
+                y_true[hxix] = 1.0
+            # elif TARGET_MODE=="middle":
+            #     hx = sorted(hexes_to_try)[(len(hexes_to_try) - 1) // 2]
+            #     hxix = pid_override.index(hx)
+            #     y_true[hxix] = 1.0
+            # else:
+            #     raise ValueError("'{}' is not a valid target mode!".format(TARGET_MODE))
 
-                aid_list.append(aid)
-                s_raw_list.append(S)
 
-                #age_1dp = int(10.0*S[0])/10.0
-                onedp = lambda z : int(10.0*z)/10.0
-                # nsucc = int(10.0 *nsucc / age_1dp)/10.0
-                # s_list.append([(int(10*S[0])/10.0), S[1], natts, ndist, nsucc])
-                # s_list.append([natts, ndist, nsucc])
-                Sa = [onedp(S[0]), dop, natts, ndist, nsucc]
-                # Sa = [0]
-                s_list.append(Sa)# (nsucc/natts if natts>0 else 0)])
-                x_list.append(X)
-                u_list.append(U)
-                a_list.append(A)
-                y_list.append(y_true)
-                psi_list.append(psi)
-                hexes_to_try_list.append(hexes_to_try)
-                hexes_tried_list.append(hexes_tried)
-                gr_id_list.append(gr_id)
-                ts_list.append(ts)
+            # X=Xa
+            # print("hexes tried: {}".format(hexes_tried))
+            # print("hexes t try: {}".format(hexes_to_try))
+            # print("hexes      : {}".format(hexes))
 
-                # x_list = numpy.array(x_list)
-                # input(x_list.shape)
-                # x_list = x_list[:, numpy.nonzero(numpy.any(x_list != 0, axis=0))[0]]
-                # input(x_list.shape)
+            # aid_list.append(aid)
+            s_raw_list.append(S)
 
-                fout.write("{},{},{},{},{},{},{},\"{}\",\"{}\"\n".format(ts,gr_id,psi,",".join(map(str,Sa)), X.sum(), numpy.sum(X>0), numpy.sum(U), "\n".join(hexes_tried), "\n".join(hexes_to_try)))
+            # nsucc = int(10.0 *nsucc / age_1dp)/10.0
+            # s_list.append([(int(10*S[0])/10.0), S[1], natts, ndist, nsucc])
+            # s_list.append([natts, ndist, nsucc])
+            # Sa = [round(S[0], 1), S[2], natts, ndist, nsucc] #214. 267
+            Sa = [round(S[0],1), dop, natts, ndist, nsucc] # S1=
+            # Sa = [ round(S[0],1), S[2], crapness] #sumMSE 202, voteMSE 242
+            # Sa = [ round(S[0],1) ] # 203, 245
+            # Sa = [ S[2] ] #209, 250
+#             Sa = [ round(S[0],1), dop, crapness ] #214 230
+            # Sa = [0]
+            s_list.append(Sa)# (nsucc/natts if natts>0 else 0)])
+
+            # print("appended SA")
+            x_list.append(X)
+            u_list.append(U)
+            a_list.append(A)
+            y_list.append(y_true)
+            psi_list.append(psi)
+            hexes_to_try_list.append(hexes_to_try)
+            hexes_tried_list.append(hexes_tried)
+            # gr_id = 0 #TODO should separate out based on (psi,group) pair
+            gr_id_list.append(gr_id)
+            aid_list.append(aid)
+            ts_list.append(ts)
+
     fout.close()
     # exit()
     # input("nibit")
     gc.collect()
-
-
 
     s_list = numpy.array(s_list)
     x_list = numpy.array(x_list, dtype=numpy.int16)
@@ -353,25 +361,28 @@ def augment_data(tr, sxua, filter_length=True, all_page_ids=None, pid_override=N
     a_list = numpy.array(a_list, dtype=numpy.int8)
     y_list = numpy.array(y_list, dtype=numpy.int8)
     psi_list = numpy.array(psi_list)
-    return aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list
+    print("Total of {} (student,assts)".format( len(s_list)))
+    print("From an original {}".format(psi_ass_cnt))
+    print("After merging timestamps: {}".format((psi_ass_cnt - psi_collaps_ts)))
+    print("#not found in SXUA: {}".format(not_in_sxua))
+    print("#outside age range: {}".format(out_age))
+    print("#outside date range: {}".format(out_dop))
+
+    return aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list, max_dop
 
 
-def train_deep_model(tr, sxua, n_macroepochs=100, n_epochs=10, use_linear=False, load_saved_tr=False, all_page_ids=None, pid_override=None):
-    model = None
-    fs = None
-    if load_saved_tr:
-        # try:
-        #     fs = joblib.load(base + 'hwg_fs.pkl')
-        # except:
-        #     print("no fs found, will create")
-        #     fs=None
-        aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = joblib.load("tr.data")
-    else:
-        fs = None
-        aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(tr, sxua,  all_page_ids=all_page_ids, pid_override=pid_override)
-        joblib.dump( (aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list),"tr.data")
+def train_deep_model(aug):
+    aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list, maxdops = aug
 
-    SCALE = True
+    print((s_list.shape, x_list.shape, u_list.shape, a_list.shape, y_list.shape))
+
+    #get min and max dops
+    print("min/max age", min(s_list[:,0]), max(s_list[:,0]))
+    print("min/max days since first assignment", min(s_list[:,1]), max(s_list[:,1]))
+    # print("min/max flab", min(s_list[:,2]), max(s_list[:,2]))
+
+
+    SCALE = False
     sc = StandardScaler()
 
     if SCALE:
@@ -398,9 +409,9 @@ def train_deep_model(tr, sxua, n_macroepochs=100, n_epochs=10, use_linear=False,
             start += gap
         # s_list = sc.transform(s_list)
 
-    print(s_list.shape, x_list.shape)
+    print("s,x list shapes:",s_list.shape, x_list.shape)
     # x_list = numpy.concatenate((s_list, x_list), axis=1)
-    print(x_list.shape)
+    # print(x_list.shape)
     gc.collect()
 
     # if fs is None:
@@ -409,9 +420,12 @@ def train_deep_model(tr, sxua, n_macroepochs=100, n_epochs=10, use_linear=False,
     #OK, we now have the four student profile vectors, and the true y vector, so we can fit the model
     max_mod = None
 
-    x_mask = numpy.nonzero(numpy.any(x_list != 0, axis=0))[0]
-    x_list = x_list[:, x_mask]
+    # x_mask = numpy.nonzero(numpy.any(x_list != 0, axis=0))[0]
+    # print(x_list.shape)
+    # x_list = x_list[:, x_mask]
 
+    min_loss = math.inf
+    model = None
     if model is None:
         lrs = []
         accs = []
@@ -421,18 +435,28 @@ def train_deep_model(tr, sxua, n_macroepochs=100, n_epochs=10, use_linear=False,
 
         print("making model")
         # x_list = top_n_of_X(x_list, fs)
-        S,X,U,A = s_list[0], x_list[0], u_list[0], a_list[0]
-        print(S.shape, X.shape, U.shape, A.shape, y_list.shape)
+        # print(s_list)
+        # print(x_list)
+        # print(u_list)
+        # print(a_list)
 
-        es = EarlyStopping(monitor='loss', patience=0, verbose=0, mode='auto')
-        # cves = EarlyStopping(monitor='acc', patience=1, verbose=0, mode='auto')
+        Sw = s_list.shape[1]
+        Xw = x_list.shape[1]
+        Uw = u_list.shape[1]
+        Aw = a_list.shape[1]
+        print((Sw, Xw, Uw, Aw, y_list.shape[1]))
+
+        print(len(s_list))
+
+#         es = EarlyStopping(monitor='loss', patience=0, verbose=1, mode='auto')#, restore_best_weights=True)
+        es = EarlyStopping(monitor='val_acc', patience=0, verbose=0, mode='auto')
         # for BS in [50, 64, 100]:
         #     for LR in [0.003, 0.0025, 0.002]:
         # for BS in [40,50,60,70,80]:
         for BS in [32]: #80
             # for LR in [0.0015, 0.002, 0.0025, 0.003, 0.0035]:
             for LR in [0.001]: #0.0015
-                model = make_phybook_model(S.shape[0], X.shape[0], U.shape[0], A.shape[0], y_list.shape[1], lr=LR)
+                model = make_phybook_model(Sw,Xw,Uw,Aw, y_list.shape[1], lr=LR)
                 print("model made")
                 # es = EarlyStopping(monitor='categorical_accuracy', patience=0, verbose=0, mode='auto')
                 # history = model.fit([s_list, x_list], [y_list, x_list], verbose=1, epochs=100, callbacks=[es], shuffle=True, batch_size=32)
@@ -448,16 +472,18 @@ def train_deep_model(tr, sxua, n_macroepochs=100, n_epochs=10, use_linear=False,
                 #     y_tt = y_list[ttixs]
                 #     history = model.fit([s_tr, x_tr], y_tr, validation_data=([s_tt,x_tt],y_tt), verbose=1, epochs=100, callbacks=[es], shuffle=True, batch_size=BS)
 
-                history = model.fit([s_list, x_list], y_list, verbose=1, validation_split=0.20, epochs=100, callbacks=[es], shuffle=True, batch_size=BS)
-                scores = model.evaluate([s_list,x_list],y_list)
+#                 history = model.fit([s_list, x_list,u_list,a_list], y_list, verbose=1, epochs=100, callbacks=[es], shuffle=True, batch_size=BS)
+                history = model.fit([s_list, x_list,u_list,a_list], y_list, verbose=1, validation_split=.2, epochs=100, callbacks=[es], shuffle=True, batch_size=BS)
+
+                scores = model.evaluate([s_list,x_list,u_list,a_list], y_list)
                 print(scores)
-                input("cha-wang!")
                 lrs.append(LR)
                 accs.append( scores[1])
                 BSs.append(BS)
-                if scores[1] > max_acc:
+                if scores[0] < min_loss:
                     max_mod = model
                     max_acc = scores[1]
+                    min_loss = scores[0]
                 print(scores)
 
             do_plot = False
@@ -473,11 +499,31 @@ def train_deep_model(tr, sxua, n_macroepochs=100, n_epochs=10, use_linear=False,
                 pyplot.show()
 
         max_acc_ix = accs.index(max(accs))
-        input((max(accs), lrs[max_acc_ix], BSs[max_acc_ix]))
-    return max_mod, x_mask, sc  # , sscaler, levscaler, volscaler
+        print((max(accs), lrs[max_acc_ix], BSs[max_acc_ix]))
+    return max_mod  # , sscaler, levscaler, volscaler
 
 
-def build_SXUA(base, assignments, all_qids, all_page_ids, pid_override):
+def build_start_dates(ass_summ):
+    start_dates = {}
+    ss = set()
+    first_assign = {}
+    for ts, aix, grid in zip(list(ass_summ["creation_date"]), list(ass_summ.index), list(ass_summ["group_id"])):
+        students = list(get_student_list(grid)["user_id"])
+        ss.update(students)
+        for s in students:
+            if s not in first_assign:
+                first_assign[s] = copy.copy(ts)
+    psi_df = get_user_data(list(ss))
+    for ix in psi_df.index:
+        psi, rd = psi_df.loc[ix, ["id","registration_date"]]
+        if psi not in start_dates:
+            ts = first_assign[psi]
+            reg_date = pandas.to_datetime(psi_df.iloc[0]["registration_date"])
+            start_dates[psi] = (ts, copy.copy(reg_date))
+    return start_dates
+
+def build_SXUA(base, ass_summ, all_qids, pid_override, start_dates):
+    all_attempts = get_all_attempts()
     global SXUA, gr_id, row, aid, ts, gb_id, student_ids
     print("building SXUA")
     SXUA = {}
@@ -488,102 +534,124 @@ def build_SXUA(base, assignments, all_qids, all_page_ids, pid_override):
     try:
         dob_cache = joblib.load(base + "dob_cache")
     except:
-        dob_cache = build_dob_cache(assignments)
+    # if True:
+        dob_cache = build_dob_cache(ass_summ)
         joblib.dump(dob_cache, base + "dob_cache")
     print("done")
-    group_ids = pandas.unique(assignments["group_id"])
-    print(len(assignments))
+    group_ids = pandas.unique(ass_summ["group_id"])
+    print(len(ass_summ))
     print(len(group_ids))
     print(group_ids[0:20])
     # exit()
-    for gr_id in group_ids:
-        gr_ass = assignments[assignments["group_id"] == gr_id]
-        for row in gr_ass.iterrows():
-            # for row in assignments.iterrows():
-            aid = row[1]["id"]
-            # print(row)
-            ts = row[1]["creation_date"]
-            # gr_id = row[1]["group_id"]
-            gc.collect()
-            gb_id = row[1]["gameboard_id"]
-            student_ids = list(get_student_list(gr_id)["user_id"])
-            # print(student_ids)
-            student_data = get_user_data(student_ids)
-            now_hexes = list(gb_qmap[gb_id])
-            # print(now_hexes)
-            # if 118651 not in student_ids:
-            #     continue
-            for psi in student_ids:
-                # if psi != 118651:
+
+    psi_aixes = defaultdict(list)
+
+    for aix in ass_summ.index:
+        ts, grid, students = ass_summ.loc[aix, ["creation_date","group_id","students"]]
+        students = eval(students)
+        for psi in students:
+            psi_aixes[psi].append(aix)
+
+    psix=0
+    for psi in psi_aixes:
+        try:
+            attempts = get_attempts_from_db(psi)
+        except:
+            print("backup attempts for",psi)
+            attempts = all_attempts[all_attempts["user_id"]==psi]
+            if attempts.empty:
+                print("no attempts available for {}".format(psi))
+                continue
+        if psi not in dob_cache:
+            print(psi, "not in dob cache")
+            continue
+
+        print("Psi", psix, "/", len(psi_aixes))
+        psix+=1
+        if psi not in start_dates:
+            continue
+        first_asst = start_dates[psi][0]
+        reg_date = start_dates[psi][1]
+
+        aixes = psi_aixes[psi] # list of aixes in chrono order
+        S = numpy.zeros(8)
+        X = numpy.zeros(len(all_qids), dtype=numpy.int16)
+        U = numpy.zeros(len(all_qids), dtype=numpy.int8)
+        A = numpy.zeros(len(pid_override), dtype=numpy.int8)
+        SXUA[psi] = {}
+        print("+", psi)  # , S, numpy.sum(X), numpy.sum(U), numpy.sum(A))
+        # print(rd)
+        l_ts = pandas.to_datetime("1970-01-01 00:00:00")
+        l_hexes = []
+
+        aixix = 0
+        for aix in sorted(aixes):
+            print("Asst", aixix, "/", len(aixes))
+            aixix += 1
+            # print("pretend processing of", psi, aix, "here...")
+            # continue
+
+            ts, gr_id, gb_id, now_hexes = ass_summ.loc[
+                aix, ["creation_date", "group_id", "gameboard_id", "hexes"]]
+            
+
+            print("calc day counts for:",psi, aix)
+            all_days = int((ts - reg_date).days)
+            print(all_days, " := ", ts, reg_date)
+            days_active = int((ts - first_asst).days)
+            print(days_active, " := ", ts, first_asst)
+
+            now_hexes = eval(now_hexes)
+
+            attempts = attempts[attempts["timestamp"] < ts]
+            all_wins = list(attempts[(attempts["correct"] == True)]["question_id"])
+
+            recent_attempts = attempts[attempts["timestamp"] >= l_ts]
+            recent_qids = list(set(recent_attempts["question_id"]))
+            recent_wins = list(recent_attempts[(recent_attempts["correct"] == True)]["question_id"])
+
+            for qid in recent_qids:
+                # try:
+                qix = all_qids.index(qid)
+                attct = numpy.sum(recent_attempts["question_id"] == qid)
+                X[qix] += attct
+                if qid in recent_wins:
+                    U[qix] = 1
+                # except:
+                #     print("UNK Qn ", qid)
                 #     continue
-                # print(psi)
-                if psi not in SXUA:
-                    S = numpy.zeros(6)
-                    X = numpy.zeros(len(all_qids), dtype=numpy.int16)
-                    U = numpy.zeros(len(all_qids), dtype=numpy.int8)
-                    A = numpy.zeros(len(pid_override), dtype=numpy.int8)
-                    SXUA[psi] = {}
-                    print("+", psi, S, numpy.sum(X), numpy.sum(U), numpy.sum(A))
-                    psi_data = student_data[student_data["id"] == psi]
-                    rd = pandas.to_datetime(psi_data.iloc[0]["registration_date"])
-                    # print(rd)
-                    student_static[psi] = (rd,)
-                    l_ts = pandas.to_datetime("1970-01-01 00:00:00")
-                    l_hexes = []
-                else:
-                    l_ts = last_ts[psi]
-                    l_hexes = last_hexes[psi]
-                    S, X, U, A = pickle.loads(zlib.decompress(SXUA[psi][l_ts]))
-                # S,X,U,A = copy(S),copy(X),copy(U),copy(A)
-                # make updates
 
-                # if psi ==118651:
-                #     print("birdskoeping")
-
-                attempts = get_attempts_from_db(psi)
-                attempts = attempts[attempts["timestamp"] < ts]
-                all_wins = list(attempts[(attempts["correct"] == True)]["question_id"])
-
-                recent_attempts = attempts[attempts["timestamp"] >= l_ts]
-                # qids = list(set(recent_attempts["question_id"]))
-                qids = list(set(recent_attempts["question_id"]))
-                recent_wins = list(recent_attempts[(recent_attempts["correct"] == True)]["question_id"])
-
-                for qid in qids:
-                    try:
-                        qix = all_qids.index(qid)
-                        attct = numpy.sum(recent_attempts["question_id"] == qid)
-                        X[qix] += attct
-                        if qid in recent_wins:
-                            U[qix] = 1
-                    except:
-                        print("UNK Qn ", qid)
-                        continue
-
-                print(l_hexes)
-                for hx in l_hexes:
+            # print("last hexes>>>", l_hexes)
+            #ASSIGNMENTS
+            print("last hexes is {} long".format(len(l_hexes)))
+            for hx in l_hexes:
+                hx = hx.split("|")[0].replace("-","_")
+                if hx in pid_override:
                     hxix = pid_override.index(hx)
                     A[hxix] = 1
+                else:
+                    print("ASS {} NOT IN PID OVERRIDE".format(hx))
 
-                S[0] = (ts - dob_cache[psi]).days / 365.242 if dob_cache[psi] is not None else 0
-                # print(ts, l_ts)
-                day_delta = max(1, (ts - l_ts).seconds) / 86400.0
-                att_delta = recent_attempts.shape[0]
-                all_atts = attempts.shape[0]
-                # print(day_delta, att_delta)
-                reg_date = student_static[psi][0]
-                # print(reg_date)
-                all_days = max(0, (ts - reg_date).days)
-                S[1] = all_days
-                S[2] = (att_delta / day_delta)  # recent perseverence
-                S[3] = (len(recent_wins) / att_delta if att_delta else 0)  # recent success rate
-                S[4] = (all_atts / all_days if all_days else 0)  # all time perseverance
-                S[5] = (len(all_wins) / all_atts if all_atts else 0)  # all time success rate
+            S[0] = (ts - dob_cache[psi]).days / 365.242 if dob_cache[psi] is not None else 0
+            # print(ts, l_ts)
+            day_delta = max(1, (ts - l_ts).seconds) / 86400.0
+            att_delta = recent_attempts.shape[0]
+            all_atts = attempts.shape[0]
+            # print(day_delta, att_delta)
+            # print(reg_date)
 
-                last_ts[psi] = ts
-                last_hexes[psi] = now_hexes
-                print("~", psi, S, numpy.sum(X), numpy.sum(U), numpy.sum(A))
-                SXUA[psi][ts] = zlib.compress(pickle.dumps((S, X, U, A)))
-                # if str(aid) in ["47150", "49320", "53792"]:
-                #     input(">> {}".format(aid))
+            S[1] = all_days
+            S[2] = days_active
+
+            S[3] = (att_delta / day_delta)  # recent perseverence
+            S[4] = (len(recent_wins) / att_delta if att_delta else 0)  # recent success rate
+            S[5] = (all_atts / all_days if all_days else 0)  # all time perseverance
+            S[6] = (len(all_wins) / all_atts if all_atts else 0)  # all time success rate
+            S[7] = (all_atts / days_active if days_active else 0)  # all time active perseverance
+
+            print("~", psi,ts, S, numpy.sum(X), numpy.sum(U), numpy.sum(A))
+            SXUA[psi][ts] = zlib.compress(pickle.dumps((S, X, U, A)))
+            l_ts = ts
+            l_hexes = now_hexes
+
     return SXUA

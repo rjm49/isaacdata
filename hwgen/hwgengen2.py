@@ -36,10 +36,13 @@ def ass_extract(ass):
 
 def build_dob_cache(assts):
     dob_cache = {}
-    for ix, ass in enumerate(assts.iterrows()):
-        id, ts, gb_id, gr_id = ass_extract(ass)
-        students = list(get_student_list(gr_id)["user_id"])
-        # print("#{}: PREP: grp {} at {}".format(ix, gr_id, ts))
+    print("building dob cache")
+    for ix in assts.index:
+        id, ts, gb_id, gr_id = assts.loc[ix,["id", "creation_date","gameboard_id","group_id"]]
+        #print("dob cache builder: ",id, ts, gb_id, gr_id)
+        students = eval(assts.loc[ix,"students"])
+        if students == []:
+            continue
         group_df = get_user_data(students)
         for psi in students:
             dob = None
@@ -55,6 +58,7 @@ def build_dob_cache(assts):
                         dob_cache[psi_inner] = dob
                     else:
                         dob_cache[psi_inner] = None
+    print("..done")
     return dob_cache
 
 
