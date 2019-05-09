@@ -100,12 +100,12 @@ def make_phybook_model(n_S, n_X, n_U, n_A, n_P, lr):
     inner_U = Dense(300, activation="relu")(input_U)
     inner_A = Dense(300, activation="relu")(input_A)
 
-#     inner_X = Dense(100, activation="relu")(inner_X)
-#     inner_U = Dense(100, activation="relu")(inner_U)
-#     inner_A = Dense(100, activation="relu")(inner_A)
+#     inner_X = Dense(300, activation="relu")(inner_X)
+#     inner_U = Dense(300, activation="relu")(inner_U)
+#     inner_A = Dense(300, activation="relu")(inner_A)
 
     
-    hidden = concatenate([inner_S, inner_X, inner_U , inner_A ])
+    hidden = concatenate([inner_S, inner_X, inner_U, inner_A ])
 
 #     hidden = Dense(w, activation='relu')(hidden)
 #     hidden = Dropout(.2)(hidden)
@@ -131,7 +131,7 @@ def make_phybook_model(n_S, n_X, n_U, n_A, n_P, lr):
         ins = input_U
 
     m = Model(inputs=ins, outputs=[next_pg])
-    m.compile(optimizer=o, loss='categorical_crossentropy', metrics={'next_pg':['acc', 'top_k_categorical_accuracy']})
+    m.compile(optimizer=o, loss='categorical_crossentropy', metrics={'next_pg':['acc']})
     # plot_model(m, to_file='hwgen_model.png')
     m.summary()
     # input(",,,")
@@ -152,6 +152,9 @@ def augment_data(ass_summ, sxua, pid_override, all_qids=None, all_page_ids=None,
     out_dop = 0
     not_in_sxua = 0
     psi_collaps_ts = 0
+    
+    dop_limit = 365
+    print("DOP limit is:", dop_limit)
 
     max_dop = 0
     inverse_all_page_ids = {}
@@ -194,7 +197,6 @@ def augment_data(ass_summ, sxua, pid_override, all_qids=None, all_page_ids=None,
         #     hx = them_hexes
         #
         # hix = pid_override.index(hx)
-        dop_limit = 365
         for psi in student_ids:
             try:
                 S, X, U, A = pickle.loads(zlib.decompress(sxua[psi][ts]))
@@ -219,7 +221,7 @@ def augment_data(ass_summ, sxua, pid_override, all_qids=None, all_page_ids=None,
 #                 U = numpy.zeros(len(all_page_ids))
 #                 for plab,pix in zip(plabs,pixes):
 #                     U[pix] += 1.0/page_wgts[plab]
-#                 print("sum mapped X:",sum(X))
+                print("sum mapped X:",sum(X))
             # print("remapping from q to p DOME")
 
 #             U = numpy.zeros(1)
@@ -258,12 +260,24 @@ def augment_data(ass_summ, sxua, pid_override, all_qids=None, all_page_ids=None,
                 atts = get_attempts_from_db(psi)
             psi_atts_cache[psi]=atts
 
+#             X = numpy.zeros(len(all_page_ids))
+            U = numpy.zeros(len(all_page_ids))
             fatts = atts[atts["timestamp"] < ts]
-            for qid in fatts["question_id"]:
+            for qid in fatts["question_id"].unique():
                 pid = qid.split("|")[0]
                 if pid not in hexes_tried:
                     if pid in pid_override:
                         hexes_tried.append(pid)
+#                 X[all_page_ids.index(pid)] = 1
+#             print("X:",X, sum(X))
+                
+            for qid in fatts[fatts["correct"] == True]["question_id"]:
+                pid = qid.split("|")[0]
+                U[all_page_ids.index(pid)] = 1
+
+#             pidz = [qid.split("|")[0] for qid in fatts[fatts["correct"] == True]["question_id"]]
+#             pixz = [all_page_ids.index(pid) for pid in pidz]
+#             U[pixz] = 1
 
             natts = fatts.shape[0]
             nsucc = len(set(fatts[fatts["correct"] == True]["question_id"]))
@@ -324,10 +338,10 @@ def augment_data(ass_summ, sxua, pid_override, all_qids=None, all_page_ids=None,
             # nsucc = int(10.0 *nsucc / age_1dp)/10.0
             # s_list.append([(int(10*S[0])/10.0), S[1], natts, ndist, nsucc])
             # s_list.append([natts, ndist, nsucc])
-            # Sa = [round(S[0], 1), S[2], natts, ndist, nsucc] #214. 267
-            Sa = [round(S[0],1), dop, natts, ndist, nsucc] # S1=
+            Sa = [round(S[0], 1), dop, natts, ndist, nsucc] #214. 267
+#             Sa = [round(S[0],1), dop] #, natts, ndist, nsucc] # S1=
             # Sa = [ round(S[0],1), S[2], crapness] #sumMSE 202, voteMSE 242
-            # Sa = [ round(S[0],1) ] # 203, 245
+#             Sa = [ round(S[0],1) ] # 203, 245
             # Sa = [ S[2] ] #209, 250
 #             Sa = [ round(S[0],1), dop, crapness ] #214 230
             # Sa = [0]
@@ -439,7 +453,7 @@ def train_deep_model(aug):
         # print(x_list)
         # print(u_list)
         # print(a_list)
-
+            
         Sw = s_list.shape[1]
         Xw = x_list.shape[1]
         Uw = u_list.shape[1]
@@ -449,7 +463,7 @@ def train_deep_model(aug):
         print(len(s_list))
 
 #         es = EarlyStopping(monitor='loss', patience=0, verbose=1, mode='auto')#, restore_best_weights=True)
-        es = EarlyStopping(monitor='val_acc', patience=0, verbose=0, mode='auto')
+        es = EarlyStopping(monitor='val_loss', verbose=0, mode='auto', patience=10, restore_best_weights=True)
         # for BS in [50, 64, 100]:
         #     for LR in [0.003, 0.0025, 0.002]:
         # for BS in [40,50,60,70,80]:
@@ -471,9 +485,8 @@ def train_deep_model(aug):
                 #     y_tr = y_list[trixs]
                 #     y_tt = y_list[ttixs]
                 #     history = model.fit([s_tr, x_tr], y_tr, validation_data=([s_tt,x_tt],y_tt), verbose=1, epochs=100, callbacks=[es], shuffle=True, batch_size=BS)
-
-#                 history = model.fit([s_list, x_list,u_list,a_list], y_list, verbose=1, epochs=100, callbacks=[es], shuffle=True, batch_size=BS)
-                history = model.fit([s_list, x_list,u_list,a_list], y_list, verbose=1, validation_split=.2, epochs=100, callbacks=[es], shuffle=True, batch_size=BS)
+                
+                history = model.fit([s_list, x_list,u_list,a_list], y_list, verbose=1, validation_split=.5, epochs=100, callbacks=[es], shuffle=True, batch_size=BS)
 
                 scores = model.evaluate([s_list,x_list,u_list,a_list], y_list)
                 print(scores)
@@ -613,8 +626,10 @@ def build_SXUA(base, ass_summ, all_qids, pid_override, start_dates):
             for qid in recent_qids:
                 # try:
                 qix = all_qids.index(qid)
+#                 pix = pid_override[qid.split["|"][0]]
                 attct = numpy.sum(recent_attempts["question_id"] == qid)
                 X[qix] += attct
+#             X[pix]=1
                 if qid in recent_wins:
                     U[qix] = 1
                 # except:

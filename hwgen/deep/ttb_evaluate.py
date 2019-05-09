@@ -15,54 +15,8 @@ from hwgen.deep.ttb_utils import augment_data
 
 gb_qmap = make_gb_question_map()
 
-# def evaluate2(tt, sxua, model, sc,fs, load_saved_data=False):
-#     if load_saved_data:
-#         aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = joblib.load(
-#             "tt.data")
-#     else:
-#         aid_list, s_list, x_list, u_list, a_list, y_list, psi_list, hexes_to_try_list, hexes_tried_list, s_raw_list, gr_id_list, ts_list = augment_data(
-#             tt, sxua)
-#     print(s_list.shape)
-#     try:
-#         s_list = sc.transform(s_list)
-#     except ValueError as ve:
-#         print(ve)
-#         print("Don't forget to check your flags... maybe you have do_train==False and have changed S ...")
-#
-#
-#     x_list = x_list[:, fs]
-#     deltas = []
-#     signed_deltas = []
-#     exacts = 0
-#     for sl,xl,ul,al,hxtt,hxtd in zip(s_list,x_list,u_list,a_list,hexes_to_try_list, hexes_tried_list):
-#         predictions = model.predict([sl.reshape(1, -1), xl.reshape(1, -1), ul.reshape(1, -1), al.reshape(1, -1)])
-#         y_hats = list(reversed(numpy.argsort(predictions)[0]))
-#         for candix in y_hats:
-#             if pid_override[candix] not in hxtd:
-#                 y_hat = candix
-#                 break
-#
-#         p_hat = pid_override[y_hat]
-#         # y_trues = []
-#         # for p_true in sorted(hxtt):
-#         # p_true = sorted(hxtt)[(len(hxtt)-1) //2]
-#         #     y_trues.append(pid_override.index(p_true))
-#         # y_true = median(y_trues)
-#         p_true = sorted(hxtt)[0]
-#         y_true = pid_override.index(p_true)
-#         if(y_true == y_hat):
-#             exacts+=1
-#         # p_true = pid_override[int(y_true)]
-#         print(y_hat, y_true, p_hat, p_true)
-#         deltas.append( abs((y_hat-y_true)))
-#         signed_deltas.append( (y_hat - y_true))
-#     mu = numpy.mean(deltas)
-#     signed_mu = numpy.mean(signed_deltas)
-#     sigma = numpy.std(deltas) if len(deltas)>1 else 0.0
-#     print("Mean of {} difference from teachers, std={}".format(mu,sigma))
-#     print("Signed delta is {}".format(signed_mu))
-#     print("{} exact matches out of {} = {}".format(exacts, len(s_list), (exacts/len(s_list))))
-#     # exit()
+
+
 
 def evaluate3(aug, model, pid_override):
     # if load_saved_data:
@@ -86,6 +40,7 @@ def evaluate3(aug, model, pid_override):
     # print(x_list.shape)
     # x_list = x_list[:, xmask]
     ct = 0
+
     if maxdops:
         dops = [ sr[1] for sr in s_list if sr[1] <= maxdops ]
     else:
@@ -213,172 +168,6 @@ def evaluate_by_bucket(aug, model, pid_override, class_lookup):
         apc_df.loc[ix, "vote"] = max_vote_ix
 
     apc_df.to_csv("apc38_df.csv")
-
-    #     teacher_id = tt.loc[tt[id==aid], "owner_user_id"]
-    #
-    #     for b in buckets:
-    #         if abs((bucket_step*b) - actdop)<=bucket_width:
-    #             bucket_counter[b] += 1
-    #             ct += 1
-    #             y_hats = []
-    #             y_hats_raw = list(reversed(numpy.argsort(predictions)[0]))
-    #             yix = 0
-    #             while len(y_hats)<len(hxtt):
-    #                 cand = pid_override[y_hats_raw[yix]]
-    #                 yix+=1
-    #                 if cand not in hxtd:
-    #                     y_hats.append(pid_override.index(cand))
-    #
-    #             # p_hat = pid_override[y_hat]
-    #
-    #             #RANDOM SELECTION
-    #             options = [p for p in pid_override if p not in hxtd]
-    #
-    #             #N+1
-    #             hts = [h for h in hxtd if (h in pid_override)]
-    #             # n1_p_hat = [h for h in sorted(hxtt) if (h in pid_override)][0]
-    #             # n1_y_hat = pid_override.index(n1_p_hat)
-    #
-    #             ix = 0
-    #             for p_true, y_hat in zip(sorted([hxtt[0]]), [y_hats[0]]):
-    #                 random_p_hat = choice(options)
-    #                 random_y_hat = pid_override.index(random_p_hat)
-    #                 n1_y_hat = 0 if not hts else min(len(pid_override) - 1, pid_override.index(hts[-1]) + ix)
-    #                 lin_y_hat = int((len(pid_override)-2)*(bucket_step*b / dopdelta))
-    #                 ix+=1
-    #
-    #                 # y_trues=[]
-    #                 # for p_true in sorted(hxtt):
-    #                 #     y_trues.append(pid_override.index(p_true))
-    #                 # y_true = mean(y_trues)
-    #                 y_true = pid_override.index(sorted(hxtt)[0])
-    #
-    #                 # y_true = pid_override.index(p_true)
-    #                 if (y_true == y_hat):
-    #                     exacts += 1
-    #                 if (y_true == n1_y_hat):
-    #                     stepexacts += 1
-    #                 if (y_true == lin_y_hat):
-    #                     linexacts += 1
-    #                 if (y_true == random_y_hat):
-    #                     randexacts += 1
-    #
-    #                 #print(y_hat, y_true, p_hat, p_true)delta = abs(y_hat - y_true)
-    #
-    #
-    #                 if PLOT_MODE=="ABS":
-    #                     delta = abs(y_hat - y_true)
-    #                     signed_delta = abs(y_hat - y_true)
-    #                     rand_delta = abs(random_y_hat - y_true)
-    #                     n1_delta = abs(n1_y_hat - y_true)
-    #                     lin_delta = abs(lin_y_hat - y_true)
-    #                 elif PLOT_MODE=="DELTA":
-    #                     delta = (y_hat - y_true)
-    #                     signed_delta = (y_hat - y_true)
-    #                     rand_delta = (random_y_hat - y_true)
-    #                     n1_delta = (n1_y_hat - y_true)
-    #                     lin_delta = (lin_y_hat - y_true)
-    #                 elif PLOT_MODE=="RAW":
-    #                     delta = y_hat
-    #                     signed_delta = y_hat
-    #                     rand_delta = random_y_hat
-    #                     n1_delta = n1_y_hat
-    #                     lin_delta = lin_y_hat
-    #                 else:
-    #                     raise ValueError("{} is an invalid plotting mode!".format(PLOT_MODE))
-    #
-    #                 replist = [aid,grid,teacher_id, psi, bucket_step*b, actdop, y_true, random_y_hat, lin_y_hat, n1_y_hat, y_hat]
-    #                 # if group_data is not None:
-    #                 #     (gr_sum_ix, gr_vote_ix) = group_data[aid]
-    #                 #     if b not in glookup:
-    #                 #         glookup[b] = [ (gr_sum_ix - y_true, gr_vote_ix - y_true) ]
-    #                 #     else:
-    #                 #         deltas = glookup[b]
-    #                 #         deltas.append( (gr_sum_ix - y_true, gr_vote_ix - y_true) )
-    #                 #     replist += [gr_sum_ix, gr_vote_ix]
-    #
-    #                 if not b in mlookup:
-    #                     mlookup[b] = [ (delta, signed_delta, rand_delta, n1_delta, lin_delta) ]
-    #
-    #                 else:
-    #                     deltas = mlookup[b]
-    #                     deltas.append( (delta, signed_delta, rand_delta, n1_delta, lin_delta) )
-    #                     mlookup[b] = deltas
-    #
-    #                 apc_df.loc[report_ix] = replist
-    #                 report_ix += 1
-    #
-    # for sm in [exacts,stepexacts,linexacts,randexacts]:
-    #     print(sm, sm/ct)
-    #
-    #
-    # bucketx = []
-    # buckety = []
-    # for b in sorted(list(bucket_counter.keys())):
-    #     bucketx.append((max(bucket_width, 1) * b))
-    #     buckety.append(bucket_counter[b])
-    # plt.plot(bucketx, buckety)
-    # plt.show()
-    #
-    # # apc_df.index = apc_df["assignment"]
-    # # apc_df.drop("assignment", inplace=True)
-    # apc_df.to_csv("apc38_df.csv")
-    # y_del_vals = []
-    # y_randels = []
-    # y_n1dels = []
-    # y_lindels = []
-    # y_actuals = []
-    # for b in mlookup:
-    #     dels, sdels, randels, n1dels, lin_dels = zip(*mlookup[b])
-    #     n_samples = len(dels)
-    #     totdels = sum(dels)
-    #     totsdels = sum(sdels)
-    #     # mu = totdels / n_samples
-    #     # smu = totsdels / n_samples
-    #     mu = mean(dels)
-    #     smu = mean(sdels)
-    #     smed = median(sdels)
-    #     sig = stdev(sdels) if len(sdels)>1 else 0.0
-    #     print(b, n_samples, mu, smu, smed, sig)
-    #     y_del_vals.append(mean(sdels))
-    #     y_randels.append(mean(randels))
-    #     y_n1dels.append(mean(n1dels))
-    #     y_lindels.append(mean(lin_dels))
-    #     y_actuals.append(0)
-    #
-    # xvals = sorted(mlookup.keys())
-    # for yvals in y_actuals, y_del_vals, y_randels, y_n1dels, y_lindels:
-    #     plt.scatter(xvals, yvals)
-    #     new_buckets = numpy.linspace(xvals[0], xvals[-1], 50)
-    #     # smooth = spline(xvals, yvals, new_buckets)
-    #     # s = InterpolatedUnivariateSpline(xvals, yvals)
-    #     # ynew = s(new_buckets)
-    #     z = numpy.polyfit(xvals, yvals, 2)
-    #     p = numpy.poly1d(z)
-    #     plt.plot(new_buckets, p(new_buckets))
-    #     # plt.plot(xvals,yvals)
-    # labels = ['actual', 'hwgen', 'random', 'canonical', 'linear']
-    #
-    # # if group_data is not None:
-    # #     g_y_sumvals = []
-    # #     g_y_votevals = []
-    # #     for b in glookup:
-    # #         sumdels, votedels = zip(*glookup[b])
-    # #         g_y_sumvals.append(mean(sumdels))
-    # #         g_y_votevals.append(mean(votedels))
-    # #     xvals = sorted(glookup.keys())
-    # #     for yvals in g_y_sumvals, g_y_votevals:
-    # #         plt.scatter(xvals, yvals)
-    # #         new_buckets = numpy.linspace(xvals[0], xvals[-1], 50)
-    # #         z = numpy.polyfit(xvals, yvals, 2)
-    # #         p = numpy.poly1d(z)
-    # #         plt.plot(new_buckets, p(new_buckets))
-    # #     labels = labels + ["group (sum)", "group (vote)"]
-    #
-    # plt.legend(labels)
-    # plt.xlabel("Student time elapsed (months)")
-    # plt.ylabel("Relative position in syllabus (qns)")
-    # plt.show()
 
 
 def class_evaluation(aug, model, pid_override):
