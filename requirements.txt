@@ -43,4 +43,4 @@ tensorflow==1.4.0
 tensorflow-tensorboard==0.4.0rc3
 traitlets==4.3.2
 wcwidth==0.1.7
-Werkzeug==0.14.1
+Werkzeug==0.15.3
